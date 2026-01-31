@@ -2,5 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python bridge.py"
+startCommand = "python bridge_web.py"
 restartPolicyType = "on_failure"
