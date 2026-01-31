@@ -1,0 +1,56 @@
+{
+  "total_budget": 5000,
+  "allocations": {
+    "deployment_liquidity": {
+      "amount": 3200,
+      "breakdown": {
+        "deployment_cost": 2000,
+        "initial_liquidity": 1200
+      },
+      "status": "allocated"
+    },
+    "beta_incentives": {
+      "amount": 1000,
+      "breakdown": {
+        "airdrop_processing": 0,
+        "task_verification": 500,
+        "beta_user_rewards": 500
+      },
+      "status": "reserved"
+    },
+    "monitoring": {
+      "amount": 500,
+      "breakdown": {
+        "railway_hosting": 300,
+        "solana_monitoring": 200
+      },
+      "status": "active"
+    },
+    "contingency": {
+      "amount": 300,
+      "breakdown": {
+        "emergency_fixes": 100,
+        "scan_if_high_volume": 200
+      },
+      "status": "reserved"
+    }
+  },
+  "post_launch_triggers": {
+    "scan_activation": {
+      "condition": ">1000 TPS sustained",
+      "budget_allocation": 200,
+      "action": "Deploy comprehensive transaction scanner"
+    },
+    "beta_expansion": {
+      "condition": "<50 daily txns by Jan 21 EOD",
+      "budget_allocation": 500,
+      "action": "Activate 5 additional robot dev contacts"
+    }
+  },
+  "tracking": {
+    "spent": 0,
+    "committed": 3200,
+    "available": 1800,
+    "last_updated": "2026-01-30T16:30:00Z"
+  }
+}
