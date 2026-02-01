@@ -575,10 +575,10 @@ PAYOUTS_TEMPLATE = """
         
         <div class="mt-6 p-4 bg-gray-800 rounded-lg">
             <p class="text-sm text-gray-400">
-                <strong>Bounty Wallet:</strong> 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
+                <strong>Source Wallet:</strong> 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF (bounty fund)
             </p>
             <p class="text-sm text-gray-500 mt-2">
-                Copy wallet address, open Phantom, paste and send WATT.
+                Copy contributor wallet, open Phantom, paste and send WATT.
             </p>
         </div>
         {% else %}
@@ -592,7 +592,7 @@ PAYOUTS_TEMPLATE = """
         function copyWallet(wallet, amount) {
             navigator.clipboard.writeText(wallet).then(() => {
                 const toast = document.getElementById('toast');
-                toast.textContent = '✓ Copied! Send ' + amount.toLocaleString() + ' WATT';
+                toast.textContent = '✓ Copied! Send ' + amount.toLocaleString() + ' WATT to contributor';
                 toast.classList.add('show');
                 setTimeout(() => toast.classList.remove('show'), 3000);
             });
