@@ -4,3 +4,6 @@ flask>=3.0.0
 flask-session>=0.5.0
 requests>=2.31.0
 redis>=5.0.0
+base58>=2.1.0
+pytest>=7.0.0
+pytest-cov>=4.0.0
