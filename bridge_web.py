@@ -12,7 +12,15 @@ CHANGELOG v1.2.0:
 
 import os
 import json
+import time
+import random
+import ipaddress
+import socket
+from urllib.parse import urlparse
+from collections import defaultdict, deque
+
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 from flask import Flask, render_template_string, request, session, jsonify
 from anthropic import Anthropic
@@ -48,6 +56,137 @@ def init_clients():
         claude_client = Anthropic(api_key=CLAUDE_API_KEY)
 
 init_clients()
+
+# =============================================================================
+# SCRAPER CONFIG (v0.1)
+# =============================================================================
+
+SCRAPE_TIMEOUT_SECONDS = 30
+MAX_CONTENT_BYTES = 2 * 1024 * 1024  # 2MB
+MAX_REDIRECTS = 3
+TRUST_PROXY_HEADERS = os.getenv("SCRAPE_TRUST_PROXY", "false").lower() == "true"
+RATE_LIMIT_WINDOW_SECONDS = 60 * 60  # 1 hour
+MAX_REQUESTS_PER_IP = 100
+MAX_REQUESTS_PER_URL = 10
+
+SCRAPE_USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+]
+
+_rate_limit_ip = defaultdict(deque)
+_rate_limit_url = defaultdict(deque)
+
+
+def _prune_rate_limit(queue, now):
+    while queue and now - queue[0] > RATE_LIMIT_WINDOW_SECONDS:
+        queue.popleft()
+
+
+def _check_rate_limit(ip_address, url):
+    now = time.time()
+
+    ip_queue = _rate_limit_ip[ip_address]
+    _prune_rate_limit(ip_queue, now)
+    if len(ip_queue) >= MAX_REQUESTS_PER_IP:
+        retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - ip_queue[0]))
+        return False, retry_after
+
+    url_queue = _rate_limit_url[url]
+    _prune_rate_limit(url_queue, now)
+    if len(url_queue) >= MAX_REQUESTS_PER_URL:
+        retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - url_queue[0]))
+        return False, retry_after
+
+    ip_queue.append(now)
+    url_queue.append(now)
+    return True, None
+
+
+def _get_client_ip():
+    if TRUST_PROXY_HEADERS:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _is_disallowed_host(hostname):
+    if not hostname:
+        return True
+    lowered = hostname.lower()
+    if lowered in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+        return True
+    try:
+        ip = ipaddress.ip_address(hostname)
+        return not ip.is_global
+    except ValueError:
+        return False
+
+
+def _resolves_to_public_ip(hostname):
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if not ip.is_global:
+            return False
+    return True
+
+
+def _validate_scrape_url(target_url):
+    parsed = urlparse(target_url)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    if _is_disallowed_host(parsed.hostname):
+        return False
+    if not _resolves_to_public_ip(parsed.hostname):
+        return False
+    return True
+
+
+def _read_limited_content(resp):
+    content = bytearray()
+    for chunk in resp.iter_content(chunk_size=8192):
+        if chunk:
+            content.extend(chunk)
+            if len(content) > MAX_CONTENT_BYTES:
+                raise ValueError("Response too large")
+    return bytes(content)
+
+
+def _fetch_with_redirects(url, headers):
+    current_url = url
+    for _ in range(MAX_REDIRECTS + 1):
+        resp = requests.get(
+            current_url,
+            headers=headers,
+            timeout=SCRAPE_TIMEOUT_SECONDS,
+            allow_redirects=False,
+            stream=True
+        )
+        if resp.status_code in {301, 302, 303, 307, 308}:
+            location = resp.headers.get("Location")
+            if not location:
+                return resp
+            next_url = requests.compat.urljoin(current_url, location)
+            if not _validate_scrape_url(next_url):
+                raise ValueError("Redirect to invalid or blocked URL")
+            current_url = next_url
+            continue
+        return resp
+    raise ValueError("Too many redirects")
 
 # Project context
 WATTCOIN_CONTEXT = """
@@ -373,6 +512,82 @@ def clear():
     session.clear()
     return render_template_string(HTML_TEMPLATE, 
         status={'type': 'success', 'message': 'History cleared.'})
+
+
+# =============================================================================
+# SCRAPER ENDPOINT - v0.1
+# =============================================================================
+
+@app.route('/api/v1/scrape', methods=['POST'])
+def scrape():
+    data = request.get_json(silent=True) or {}
+    target_url = data.get('url', '').strip()
+    output_format = (data.get('format') or 'text').strip().lower()
+
+    if not target_url:
+        return jsonify({'success': False, 'error': 'URL required'}), 400
+    if output_format not in {'text', 'html', 'json'}:
+        return jsonify({'success': False, 'error': 'Invalid format'}), 400
+    if not _validate_scrape_url(target_url):
+        return jsonify({'success': False, 'error': 'Invalid or blocked URL'}), 400
+
+    client_ip = _get_client_ip()
+    allowed, retry_after = _check_rate_limit(client_ip, target_url)
+    if not allowed:
+        return jsonify({
+            'success': False,
+            'error': 'Rate limit exceeded',
+            'retry_after_seconds': retry_after
+        }), 429
+
+    headers = {
+        'User-Agent': random.choice(SCRAPE_USER_AGENTS),
+        'Accept': 'text/html,application/json;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+    }
+
+    try:
+        resp = _fetch_with_redirects(target_url, headers)
+    except requests.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except requests.RequestException as e:
+        return jsonify({'success': False, 'error': f'Request failed: {str(e)}'}), 502
+
+    if resp.status_code in {401, 403, 429}:
+        return jsonify({
+            'success': False,
+            'error': 'Request blocked',
+            'status_code': resp.status_code
+        }), 403
+
+    try:
+        raw_bytes = _read_limited_content(resp)
+        encoding = resp.encoding or 'utf-8'
+        if output_format == 'html':
+            content = raw_bytes.decode(encoding, errors='replace')
+        elif output_format == 'json':
+            content = json.loads(raw_bytes.decode(encoding, errors='replace'))
+        else:
+            html_text = raw_bytes.decode(encoding, errors='replace')
+            soup = BeautifulSoup(html_text, 'html.parser')
+            content = soup.get_text(separator=' ', strip=True)
+    except ValueError as e:
+        if str(e) == 'Response too large':
+            return jsonify({'success': False, 'error': 'Response too large'}), 413
+        return jsonify({'success': False, 'error': 'Invalid JSON response'}), 502
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Parsing error: {str(e)}'}), 500
+
+    return jsonify({
+        'success': True,
+        'url': target_url,
+        'content': content,
+        'format': output_format,
+        'status_code': resp.status_code,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }), 200
 
 
 # =============================================================================
