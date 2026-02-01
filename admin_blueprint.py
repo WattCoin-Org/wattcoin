@@ -497,8 +497,19 @@ PAYOUTS_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payout Queue - WattCoin Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #10b981; color: #000; padding: 12px 20px;
+            border-radius: 8px; font-weight: 600; opacity: 0;
+            transition: opacity 0.3s; z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div id="toast" class="toast"></div>
+    
     <div class="max-w-5xl mx-auto p-6">
         <a href="{{ url_for('admin.dashboard') }}" class="text-gray-500 hover:text-gray-300 text-sm mb-4 inline-block">
             ← Back to Dashboard
@@ -546,10 +557,10 @@ PAYOUTS_TEMPLATE = """
                         </td>
                         <td class="px-4 py-3">
                             {% if payout.status == 'pending' and payout.wallet %}
-                            <a href="solana:{{ payout.wallet }}?amount={{ payout.amount }}&spl-token=Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump&label=WattCoin%20Bounty&message=PR%23{{ payout.pr_number }}"
+                            <button onclick="copyWallet('{{ payout.wallet }}', {{ payout.amount }})"
                                class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium transition inline-flex items-center gap-1">
-                                👻 Pay {{ "{:,}".format(payout.amount) }}
-                            </a>
+                                📋 Copy Wallet
+                            </button>
                             {% elif payout.status == 'pending' and not payout.wallet %}
                             <span class="text-xs text-red-400">No wallet</span>
                             {% else %}
@@ -567,7 +578,7 @@ PAYOUTS_TEMPLATE = """
                 <strong>Bounty Wallet:</strong> 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
             </p>
             <p class="text-sm text-gray-500 mt-2">
-                Click "Pay" to open Phantom with pre-filled transaction. Token: WATT (Gpmbh4...rpump)
+                Copy wallet address, open Phantom, paste and send WATT.
             </p>
         </div>
         {% else %}
@@ -576,6 +587,17 @@ PAYOUTS_TEMPLATE = """
         </div>
         {% endif %}
     </div>
+    
+    <script>
+        function copyWallet(wallet, amount) {
+            navigator.clipboard.writeText(wallet).then(() => {
+                const toast = document.getElementById('toast');
+                toast.textContent = '✓ Copied! Send ' + amount.toLocaleString() + ' WATT';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            });
+        }
+    </script>
 </body>
 </html>
 """
