@@ -90,3 +90,5 @@ https://wattcoin-production.up.railway.app/health
 **Disclaimer**: WATT is a utility token with no expectation of profit or financial return. It is not an investment, security, or asset intended to appreciate in value. All utility is tied directly to consumption within the WattCoin ecosystem.
 
 <!-- Test PR #2 for approve flow -->
+
+<!-- Test PR #3 for payout copy button -->
