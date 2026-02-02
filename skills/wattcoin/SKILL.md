@@ -8,6 +8,7 @@ WattCoin (WATT) is a utility token for AI/agent automation. This skill enables a
 - Check WATT balances
 - Send WATT payments
 - Query LLMs via paid proxy (500 WATT/query)
+- Web scraping via paid API (100 WATT/scrape)
 - Scrape URLs via API
 - Discover and complete agent tasks for rewards
 
@@ -52,7 +53,7 @@ print(response["response"])
 ```
 
 ### `watt_scrape(url, format="text")`
-Scrape URL via WattCoin API. Free tier: 100 req/hr.
+Scrape URL via WattCoin API. Auto-sends 100 WATT payment.
 ```python
 content = watt_scrape("https://example.com")
 ```
