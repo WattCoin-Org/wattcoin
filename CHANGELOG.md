@@ -1,4 +1,16 @@
 ## [February 3, 2026] - [UTC]
+- **Action**: Feature release
+- **Version**: v1.9.0
+- **Files**: bridge_web.py, skills/wattcoin/wattcoin.py, skills/wattcoin/SKILL.md
+- **Summary**: Paid Scraper API
+  - Scraper now requires 100 WATT payment (same pattern as LLM proxy)
+  - API key holders can bypass payment (premium feature)
+  - Payment verification reused from LLM proxy
+  - New unified pricing endpoint: `GET /api/v1/pricing`
+  - OpenClaw skill updated: `watt_scrape()` auto-pays 100 WATT
+- **Requested by**: Chris
+
+## [February 3, 2026] - [UTC]
 - **Action**: Dashboard update
 - **Version**: v1.8.1
 - **Files**: admin_blueprint.py
