@@ -6,24 +6,97 @@ GET /api/v1/reputation/<github_username> - Single contributor
 
 import os
 import json
+import shutil
 from flask import Blueprint, jsonify
 
 reputation_bp = Blueprint('reputation', __name__)
 
-# Config
+# Config - check volume first, then repo seed
 REPUTATION_FILE = "/app/data/reputation.json"
+
+# Seed data - used when volume file is empty/missing
+SEED_DATA = {
+    "contributors": {
+        "aybanda": {
+            "github": "aybanda",
+            "wallet": None,
+            "bounties_completed": 1,
+            "total_watt_earned": 100000,
+            "first_contribution": "2026-01-31",
+            "bounties": [
+                {
+                    "issue": 6,
+                    "title": "Add /api/v1/scrape endpoint",
+                    "amount": 100000,
+                    "completed_at": "2026-01-31",
+                    "tx_signature": None
+                }
+            ],
+            "tier": "silver"
+        },
+        "njg7194": {
+            "github": "njg7194",
+            "wallet": "3bLMHWe3jNKMuKiTu1LK5a7MPBE7WN5qDwKx2s7thEkr",
+            "bounties_completed": 2,
+            "total_watt_earned": 70000,
+            "first_contribution": "2026-02-02",
+            "bounties": [
+                {
+                    "issue": 4,
+                    "title": "Improve CONTRIBUTING.md with examples",
+                    "amount": 20000,
+                    "completed_at": "2026-02-02",
+                    "tx_signature": "3pYqoFejGx1fL3muvtYUUg2VJ79DFrfyWs92wqydFKeSSzFqrZM72dLVdVVfdZ6vvmY4q5zSN1a2PwXKKwz3UjMT"
+                },
+                {
+                    "issue": 5,
+                    "title": "Add unit tests for tip_transfer.py",
+                    "amount": 50000,
+                    "completed_at": "2026-02-02",
+                    "tx_signature": "2ZeejLNFLvpbE3gazwTsASmBWXutqvzYtceBX1np1N8hHruhxnnjzRLokEm1vpQareLmPtrUHhF4KZSq9L1jpuqa"
+                }
+            ],
+            "tier": "bronze"
+        }
+    },
+    "tiers": {
+        "bronze": {"min_bounties": 1, "min_watt": 0},
+        "silver": {"min_bounties": 3, "min_watt": 100000},
+        "gold": {"min_bounties": 5, "min_watt": 250000}
+    },
+    "stats": {
+        "total_contributors": 2,
+        "total_bounties_paid": 3,
+        "total_watt_distributed": 170000,
+        "last_updated": "2026-02-02T05:30:00Z"
+    }
+}
 
 # =============================================================================
 # DATA STORAGE
 # =============================================================================
 
 def load_reputation():
-    """Load reputation data from JSON file."""
+    """Load reputation data from JSON file. Falls back to seed data if volume empty."""
+    # Try loading from volume first
     try:
         with open(REPUTATION_FILE, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Check if it has actual data
+            if data.get("contributors"):
+                return data
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"contributors": {}, "tiers": {}, "stats": {}}
+        pass
+    
+    # Use seed data and save to volume for future updates
+    try:
+        os.makedirs(os.path.dirname(REPUTATION_FILE), exist_ok=True)
+        with open(REPUTATION_FILE, 'w') as f:
+            json.dump(SEED_DATA, f, indent=2)
+    except Exception as e:
+        print(f"Could not write seed data: {e}")
+    
+    return SEED_DATA
 
 def save_reputation(data):
     """Save reputation data to JSON file."""
