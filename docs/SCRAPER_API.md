@@ -4,6 +4,19 @@ The WattCoin Scraper API allows agents to fetch web content programmatically.
 
 **Base URL:** `https://wattcoin-production-81a7.up.railway.app`
 
+**Cost:** 100 WATT per request (or API key bypass)
+
+---
+
+## Payment Flow
+
+1. Send **100 WATT** to bounty wallet: `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF`
+2. Include `wallet` and `tx_signature` in request
+3. Backend verifies payment on Solana
+4. Returns scraped content
+
+**Alternative:** Use API key header to bypass payment (for premium users).
+
 ---
 
 ## Endpoint
@@ -17,10 +30,21 @@ POST /api/v1/scrape
 | Header | Required | Description |
 |--------|----------|-------------|
 | `Content-Type` | Yes | Must be `application/json` |
-| `X-API-Key` | No | Optional API key for higher rate limits |
+| `X-API-Key` | No | API key to bypass payment |
 
 ### Request Body
 
+**With payment:**
+```json
+{
+  "url": "https://example.com",
+  "format": "text",
+  "wallet": "YourWalletAddress...",
+  "tx_signature": "TransactionSignature..."
+}
+```
+
+**With API key (no payment):**
 ```json
 {
   "url": "https://example.com",
@@ -32,6 +56,10 @@ POST /api/v1/scrape
 |-------|----------|------|-------------|
 | `url` | Yes | string | URL to scrape |
 | `format` | No | string | Output format: `text` (default) or `html` |
+| `wallet` | Yes* | string | Your Solana wallet address |
+| `tx_signature` | Yes* | string | WATT transfer transaction signature |
+
+*Required unless using API key header
 
 ### Response
 
@@ -42,40 +70,33 @@ POST /api/v1/scrape
   "format": "text",
   "status_code": 200,
   "timestamp": "2026-02-02T05:26:03.780417Z",
-  "url": "https://example.com"
+  "url": "https://example.com",
+  "tx_verified": true,
+  "watt_charged": 100
 }
 ```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | Whether the request succeeded |
-| `content` | string | Scraped content |
-| `format` | string | Output format used |
-| `status_code` | integer | HTTP status from target URL |
-| `timestamp` | string | ISO timestamp of request |
-| `url` | string | URL that was scraped |
 
 ---
 
 ## Examples
 
-### cURL
+### cURL (with payment)
 
-**Text format (default):**
 ```bash
+# 1. Send 100 WATT to 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
+# 2. Use tx signature in request:
+
 curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
+  -d '{
+    "url": "https://example.com",
+    "wallet": "YourWalletAddress...",
+    "tx_signature": "YourTxSignature..."
+  }'
 ```
 
-**HTML format:**
-```bash
-curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "format": "html"}'
-```
+### cURL (with API key)
 
-**With API key:**
 ```bash
 curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
   -H "Content-Type: application/json" \
@@ -83,121 +104,96 @@ curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
   -d '{"url": "https://example.com"}'
 ```
 
-### Python
+### Python (with payment)
 
 ```python
+from solana.rpc.api import Client
+from solders.keypair import Keypair
+from spl.token.instructions import transfer
 import requests
 
+BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
+API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+
+# 1. Send 100 WATT (implement your transfer logic)
+tx_signature = send_watt(BOUNTY_WALLET, 100)
+
+# 2. Call scraper
 response = requests.post(
-    "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape",
-    json={"url": "https://example.com", "format": "text"}
+    f"{API_BASE}/api/v1/scrape",
+    json={
+        "url": "https://example.com",
+        "format": "text",
+        "wallet": str(my_wallet.pubkey()),
+        "tx_signature": tx_signature
+    }
 )
 
 data = response.json()
 if data["success"]:
     print(data["content"])
-else:
-    print(f"Error: {data.get('error')}")
 ```
 
-**With API key:**
-```python
-import requests
-
-response = requests.post(
-    "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape",
-    headers={"X-API-Key": "your-api-key"},
-    json={"url": "https://example.com"}
-)
-
-print(response.json())
-```
-
-### JavaScript
+### JavaScript (with payment)
 
 ```javascript
+// After sending 100 WATT...
 const response = await fetch(
   "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape",
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: "https://example.com", format: "text" })
+    body: JSON.stringify({
+      url: "https://example.com",
+      format: "text",
+      wallet: walletAddress,
+      tx_signature: txSignature
+    })
   }
 );
 
 const data = await response.json();
-if (data.success) {
-  console.log(data.content);
-} else {
-  console.error("Error:", data.error);
-}
-```
-
-**With API key:**
-```javascript
-const response = await fetch(
-  "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": "your-api-key"
-    },
-    body: JSON.stringify({ url: "https://example.com" })
-  }
-);
+console.log(data.content);
 ```
 
 ---
 
 ## Error Handling
 
-### Error Response Format
+| Error | Code | Description |
+|-------|------|-------------|
+| `payment_required` | 402 | No payment or API key provided |
+| `invalid_transaction` | 400 | TX not found or invalid |
+| `incorrect_amount` | 400 | Payment not exactly 100 WATT |
+| `wrong_recipient` | 400 | Payment not sent to bounty wallet |
+| `transaction_too_old` | 400 | TX older than 10 minutes |
+| `transaction_already_used` | 400 | TX signature reused |
+| `Invalid API key` | 401 | API key not valid |
+
+---
+
+## Pricing
+
+Check current pricing:
+
+```
+GET /api/v1/pricing
+```
 
 ```json
 {
-  "success": false,
-  "error": "Error description"
+  "services": {
+    "llm": { "cost_watt": 500, "description": "Grok query" },
+    "scrape": { "cost_watt": 100, "description": "Web scrape" }
+  },
+  "payment_wallet": "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
 }
 ```
-
-### Error Codes
-
-| Error | Description | Solution |
-|-------|-------------|----------|
-| `Invalid API key` | API key not found or revoked | Check your API key |
-| `URL is required` | Missing URL in request | Include `url` in body |
-| `Invalid URL` | Malformed URL | Use full URL with protocol |
-| `Failed to fetch URL` | Target unreachable | Check URL is accessible |
-| `Rate limit exceeded` | Too many requests | Wait or use API key |
-
----
-
-## Rate Limits
-
-| Tier | Limit | How to Access |
-|------|-------|---------------|
-| Anonymous | 100 requests/hour | No auth required |
-| Basic API Key | 500 requests/hour | Request API key |
-| Premium API Key | 2,000 requests/hour | Contact admin |
-
-**Rate limit headers:**
-- `X-RateLimit-Remaining` — Requests left in window
-- `X-RateLimit-Reset` — When limit resets (Unix timestamp)
-
----
-
-## Notes
-
-- **Format `text`:** Strips HTML, returns plain text content
-- **Format `html`:** Returns raw HTML of the page
-- **Timeouts:** Requests timeout after 30 seconds
-- **Size limits:** Responses capped at 1MB
-- **User-Agent:** Requests identify as WattCoin Scraper
 
 ---
 
 ## Related
 
-- [Bounties API](/docs/BOUNTIES_API.md)
 - [LLM Proxy API](/docs/LLM_PROXY_SPEC.md)
+- [Bounties API](/docs/API_ENDPOINTS.md)
+- [OpenClaw Skill](/skills/wattcoin)
