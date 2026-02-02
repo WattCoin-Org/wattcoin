@@ -35,6 +35,7 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GROK_API_KEY = os.getenv("GROK_API_KEY", "")
 REPO = "WattCoin-Org/wattcoin"
 DATA_FILE = "/app/data/bounty_reviews.json"
+API_KEYS_FILE = "/app/data/api_keys.json"
 
 # =============================================================================
 # DATA STORAGE (JSON file)
@@ -58,6 +59,42 @@ def save_data(data):
     except Exception as e:
         print(f"Error saving data: {e}")
         return False
+
+# =============================================================================
+# API KEYS STORAGE
+# =============================================================================
+
+def load_api_keys():
+    """Load API keys from JSON file."""
+    try:
+        with open(API_KEYS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"keys": {}}
+
+def save_api_keys(data):
+    """Save API keys to JSON file."""
+    try:
+        os.makedirs(os.path.dirname(API_KEYS_FILE), exist_ok=True)
+        with open(API_KEYS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving API keys: {e}")
+        return False
+
+def generate_api_key():
+    """Generate a new UUID4 API key."""
+    import uuid
+    return str(uuid.uuid4())
+
+def get_tier_rate_limit(tier):
+    """Get rate limit for a tier."""
+    limits = {
+        "basic": {"requests_per_hour": 500, "requests_per_url": 50},
+        "premium": {"requests_per_hour": 2000, "requests_per_url": 200}
+    }
+    return limits.get(tier, limits["basic"])
 
 # =============================================================================
 # AUTH
@@ -440,12 +477,24 @@ DASHBOARD_TEMPLATE = """
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <div class="max-w-6xl mx-auto p-6">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex justify-between items-center mb-4">
             <div>
-                <h1 class="text-2xl font-bold text-green-400">⚡ Bounty Admin Dashboard</h1>
-                <p class="text-gray-500 text-sm">v1.2.0 | {{ repo }}</p>
+                <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
+                <p class="text-gray-500 text-sm">v1.3.0 | {{ repo }}</p>
             </div>
             <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
+        </div>
+        
+        <!-- Nav Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-700">
+            <a href="{{ url_for('admin.dashboard') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
+                🎯 Bounties
+            </a>
+            <a href="{{ url_for('admin.api_keys') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔑 API Keys
+            </a>
         </div>
         
         {% if message %}
@@ -1032,6 +1081,185 @@ CLAIMS_TEMPLATE = """
 </html>
 """
 
+API_KEYS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Keys - WattCoin Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #10b981; color: #000; padding: 12px 20px;
+            border-radius: 8px; font-weight: 600; opacity: 0;
+            transition: opacity 0.3s; z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div id="toast" class="toast"></div>
+    
+    <div class="max-w-6xl mx-auto p-6">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
+                <p class="text-gray-500 text-sm">v1.3.0 | {{ repo }}</p>
+            </div>
+            <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
+        </div>
+        
+        <!-- Nav Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-700">
+            <a href="{{ url_for('admin.dashboard') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🎯 Bounties
+            </a>
+            <a href="{{ url_for('admin.api_keys') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
+                🔑 API Keys
+            </a>
+        </div>
+        
+        {% if message %}
+        <div class="bg-green-900/50 border border-green-500 text-green-300 px-4 py-2 rounded mb-6">{{ message }}</div>
+        {% endif %}
+        
+        <!-- Stats -->
+        <div class="grid grid-cols-3 gap-4 mb-8">
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-3xl font-bold text-blue-400">{{ stats.total }}</div>
+                <div class="text-gray-500 text-sm">Total Keys</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-3xl font-bold text-green-400">{{ stats.active }}</div>
+                <div class="text-gray-500 text-sm">Active</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-3xl font-bold text-gray-400">{{ "{:,}".format(stats.total_requests) }}</div>
+                <div class="text-gray-500 text-sm">Total Requests</div>
+            </div>
+        </div>
+        
+        <!-- Create Key Form -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-8">
+            <h2 class="text-lg font-semibold mb-4">Create New API Key</h2>
+            <form action="{{ url_for('admin.create_api_key') }}" method="POST" class="flex gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm text-gray-400 mb-1">Owner Wallet</label>
+                    <input type="text" name="owner_wallet" placeholder="Solana wallet address" 
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:border-green-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Tier</label>
+                    <select name="tier" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:border-green-500 focus:outline-none">
+                        <option value="basic">Basic (500/hr)</option>
+                        <option value="premium">Premium (2000/hr)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">TX Signature</label>
+                    <input type="text" name="tx_sig" placeholder="Payment TX (optional)" 
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:border-green-500 focus:outline-none">
+                </div>
+                <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition">
+                    + Create Key
+                </button>
+            </form>
+        </div>
+        
+        <!-- Keys List -->
+        <h2 class="text-lg font-semibold mb-4">Active Keys</h2>
+        
+        {% if keys %}
+        <div class="bg-gray-800 rounded-lg overflow-hidden">
+            <table class="w-full">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-sm">API Key</th>
+                        <th class="px-4 py-3 text-left text-sm">Owner</th>
+                        <th class="px-4 py-3 text-left text-sm">Tier</th>
+                        <th class="px-4 py-3 text-left text-sm">Requests</th>
+                        <th class="px-4 py-3 text-left text-sm">Created</th>
+                        <th class="px-4 py-3 text-left text-sm">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key in keys %}
+                    <tr class="border-t border-gray-700">
+                        <td class="px-4 py-3">
+                            <code class="text-xs bg-gray-700 px-2 py-1 rounded cursor-pointer" 
+                                  onclick="copyKey('{{ key.key }}')" title="Click to copy">
+                                {{ key.key[:8] }}...{{ key.key[-4:] }}
+                            </code>
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if key.owner_wallet %}
+                            <span class="text-xs text-gray-400" title="{{ key.owner_wallet }}">
+                                {{ key.owner_wallet[:6] }}...{{ key.owner_wallet[-4:] }}
+                            </span>
+                            {% else %}
+                            <span class="text-xs text-gray-500">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded text-xs 
+                                {% if key.tier == 'premium' %}bg-purple-900/50 text-purple-400
+                                {% else %}bg-blue-900/50 text-blue-400{% endif %}">
+                                {{ key.tier }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-400">{{ "{:,}".format(key.usage_count) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ key.created[:10] }}</td>
+                        <td class="px-4 py-3">
+                            {% if key.status == 'active' %}
+                            <form action="{{ url_for('admin.revoke_api_key', key_id=key.key) }}" method="POST" 
+                                  onsubmit="return confirm('Revoke this API key?');" style="display:inline;">
+                                <button type="submit" class="text-xs text-red-400 hover:text-red-300">Revoke</button>
+                            </form>
+                            {% else %}
+                            <span class="text-xs text-gray-500">Revoked</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-gray-800 rounded-lg p-8 text-center text-gray-500">
+            No API keys created yet
+        </div>
+        {% endif %}
+        
+        <div class="mt-6 p-4 bg-gray-800 rounded-lg">
+            <p class="text-sm text-gray-400 mb-2"><strong>Usage:</strong></p>
+            <code class="text-xs bg-gray-700 px-3 py-2 rounded block">
+                curl -X POST https://your-domain/api/v1/scrape \\<br>
+                &nbsp;&nbsp;-H "X-API-Key: your-key" \\<br>
+                &nbsp;&nbsp;-H "Content-Type: application/json" \\<br>
+                &nbsp;&nbsp;-d '{"url": "https://example.com", "format": "text"}'
+            </code>
+        </div>
+    </div>
+    
+    <script>
+        function copyKey(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                const toast = document.getElementById('toast');
+                toast.textContent = '✓ API key copied to clipboard';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            });
+        }
+    </script>
+</body>
+</html>
+"""
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -1296,6 +1524,88 @@ def mark_paid(pr_number):
     
     save_data(data)
     return redirect(url_for('admin.payouts', message=f"PR #{pr_number} marked as paid"))
+
+# =============================================================================
+# API KEYS ROUTES
+# =============================================================================
+
+@admin_bp.route('/api-keys')
+@login_required
+def api_keys():
+    """API keys management page."""
+    data = load_api_keys()
+    keys_dict = data.get("keys", {})
+    
+    # Convert to list for template
+    keys_list = []
+    total_requests = 0
+    active_count = 0
+    
+    for key_id, key_data in keys_dict.items():
+        key_data["key"] = key_id
+        keys_list.append(key_data)
+        total_requests += key_data.get("usage_count", 0)
+        if key_data.get("status") == "active":
+            active_count += 1
+    
+    # Sort by created date (newest first)
+    keys_list.sort(key=lambda x: x.get("created", ""), reverse=True)
+    
+    stats = {
+        "total": len(keys_list),
+        "active": active_count,
+        "total_requests": total_requests
+    }
+    
+    return render_template_string(API_KEYS_TEMPLATE,
+        keys=keys_list,
+        stats=stats,
+        repo=REPO,
+        message=request.args.get('message')
+    )
+
+@admin_bp.route('/api-keys/create', methods=['POST'])
+@login_required
+def create_api_key():
+    """Create a new API key."""
+    owner_wallet = request.form.get('owner_wallet', '').strip()
+    tier = request.form.get('tier', 'basic')
+    tx_sig = request.form.get('tx_sig', '').strip()
+    
+    if tier not in ['basic', 'premium']:
+        tier = 'basic'
+    
+    # Generate new key
+    new_key = generate_api_key()
+    
+    # Load and update data
+    data = load_api_keys()
+    data["keys"][new_key] = {
+        "owner_wallet": owner_wallet,
+        "tier": tier,
+        "tx_sig": tx_sig if tx_sig else None,
+        "usage_count": 0,
+        "created": datetime.now().isoformat(),
+        "status": "active"
+    }
+    
+    save_api_keys(data)
+    
+    return redirect(url_for('admin.api_keys', message=f"Key created: {new_key[:8]}..."))
+
+@admin_bp.route('/api-keys/revoke/<key_id>', methods=['POST'])
+@login_required
+def revoke_api_key(key_id):
+    """Revoke an API key."""
+    data = load_api_keys()
+    
+    if key_id in data.get("keys", {}):
+        data["keys"][key_id]["status"] = "revoked"
+        data["keys"][key_id]["revoked_at"] = datetime.now().isoformat()
+        save_api_keys(data)
+        return redirect(url_for('admin.api_keys', message=f"Key revoked: {key_id[:8]}..."))
+    
+    return redirect(url_for('admin.api_keys', message="Key not found"))
 
 @admin_bp.route('/clear-data')
 @login_required
