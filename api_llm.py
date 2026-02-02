@@ -161,6 +161,7 @@ def get_transaction(tx_signature):
 def verify_watt_payment(tx_signature, expected_wallet, expected_amount):
     """
     Verify WATT payment on Solana.
+    Uses pre/post token balance changes for reliable verification.
     Returns (success, error_code, error_message)
     """
     # Check if already used (replay protection)
@@ -193,63 +194,65 @@ def verify_watt_payment(tx_signature, expected_wallet, expected_amount):
     if tx_age < 0:
         return False, "tx_invalid_time", "Transaction has invalid timestamp"
     
-    # Parse token transfers
-    # Look for SPL token transfer to bounty wallet
-    instructions = tx.get("transaction", {}).get("message", {}).get("instructions", [])
-    account_keys = tx.get("transaction", {}).get("message", {}).get("accountKeys", [])
+    # ==========================================================================
+    # VERIFY USING PRE/POST TOKEN BALANCES
+    # This is more reliable than parsing instructions for various token programs
+    # ==========================================================================
     
-    # Also check inner instructions (for token transfers)
-    inner_instructions = meta.get("innerInstructions", [])
+    pre_balances = meta.get("preTokenBalances", [])
+    post_balances = meta.get("postTokenBalances", [])
     
-    # Collect all parsed instructions
-    all_instructions = list(instructions)
-    for inner in inner_instructions:
-        all_instructions.extend(inner.get("instructions", []))
+    # Find bounty wallet balance changes for WATT token
+    sender_change = 0
+    recipient_change = 0
+    sender_found = False
+    recipient_found = False
     
-    # Look for token transfer
-    transfer_found = False
-    transfer_amount = 0
-    sender_wallet = None
+    # Build lookup of pre-balances by account index
+    pre_by_index = {}
+    for bal in pre_balances:
+        if bal.get("mint") == WATT_TOKEN_MINT:
+            idx = bal.get("accountIndex")
+            owner = bal.get("owner")
+            amount = float(bal.get("uiTokenAmount", {}).get("uiAmount", 0))
+            pre_by_index[idx] = {"owner": owner, "amount": amount}
     
-    for ix in all_instructions:
-        parsed = ix.get("parsed")
-        if not parsed:
+    # Check post-balances and calculate changes
+    for bal in post_balances:
+        if bal.get("mint") != WATT_TOKEN_MINT:
             continue
         
-        ix_type = parsed.get("type")
-        info = parsed.get("info", {})
+        idx = bal.get("accountIndex")
+        owner = bal.get("owner")
+        post_amount = float(bal.get("uiTokenAmount", {}).get("uiAmount", 0))
+        pre_amount = pre_by_index.get(idx, {}).get("amount", 0)
+        change = post_amount - pre_amount
         
-        # Check for transfer or transferChecked
-        if ix_type in ["transfer", "transferChecked"]:
-            # Get destination
-            destination = info.get("destination", "")
-            
-            # For SPL tokens, we need to check the token account owner
-            # The destination is a token account, not wallet directly
-            # We'll check if transfer amount matches
-            
-            amount_raw = info.get("amount") or info.get("tokenAmount", {}).get("amount")
-            if amount_raw:
-                amount = int(amount_raw) / (10 ** WATT_DECIMALS)
-                
-                # Check if this could be our transfer
-                if abs(amount - expected_amount) < 0.01:  # Allow tiny rounding
-                    transfer_found = True
-                    transfer_amount = amount
-                    sender_wallet = info.get("authority") or info.get("source")
-                    break
+        # Check if this is the bounty wallet (recipient)
+        if owner == BOUNTY_WALLET:
+            recipient_change = change
+            recipient_found = True
+        
+        # Check if this is the expected sender
+        if owner == expected_wallet:
+            sender_change = change
+            sender_found = True
     
-    if not transfer_found:
-        return False, "invalid_amount", f"Payment must be exactly {expected_amount} WATT"
+    # Validate: recipient must have received the expected amount
+    if not recipient_found:
+        return False, "wrong_recipient", "Payment not sent to bounty wallet"
     
-    # Verify amount is exact
-    if transfer_amount != expected_amount:
-        return False, "invalid_amount", f"Payment must be exactly {expected_amount} WATT, got {transfer_amount}"
+    if recipient_change < expected_amount - 0.01:  # Allow tiny rounding
+        return False, "invalid_amount", f"Bounty wallet received {recipient_change} WATT, expected {expected_amount}"
     
-    # Note: Full wallet verification would require checking token account ownership
-    # For v1, we trust the transfer amount and log the sender
+    # Validate: sender must have sent (negative change)
+    if not sender_found:
+        return False, "wallet_mismatch", "Sender wallet not found in transaction"
     
-    # Mark signature as used
+    if sender_change > -expected_amount + 0.01:  # Should be negative (sent out)
+        return False, "wallet_mismatch", f"Expected wallet didn't send {expected_amount} WATT"
+    
+    # All checks passed - mark signature as used
     save_used_signature(tx_signature)
     
     return True, None, None
