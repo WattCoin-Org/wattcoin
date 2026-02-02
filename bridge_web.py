@@ -1,9 +1,15 @@
 """
-Grok-Claude Bridge - Web Interface v1.9.0
+Grok-Claude Bridge - Web Interface v2.1.0
 Human-in-the-loop AI collaboration for WattCoin project
 + Proxy endpoint for external API calls (Moltbook, etc.)
 + Admin dashboard for bounty management
 + Paid scraper API (100 WATT per scrape)
++ WattNode routing for distributed compute
+
+CHANGELOG v2.1.0:
+- WattNode network support - route scrape jobs to registered nodes
+- Nodes earn 70% of payment, 20% treasury, 10% burn
+- Fallback to centralized if no active nodes
 
 CHANGELOG v1.9.0:
 - Scraper now requires WATT payment (100 WATT) or API key
@@ -58,11 +64,13 @@ from api_bounties import bounties_bp
 from api_llm import llm_bp, verify_watt_payment, save_used_signature
 from api_reputation import reputation_bp
 from api_tasks import tasks_bp
+from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
 app.register_blueprint(admin_bp)
 app.register_blueprint(bounties_bp)
 app.register_blueprint(llm_bp)
 app.register_blueprint(reputation_bp)
 app.register_blueprint(tasks_bp)
+app.register_blueprint(nodes_bp)
 
 # =============================================================================
 # API CLIENTS
@@ -704,6 +712,47 @@ def scrape():
         save_used_signature(tx_signature)
         payment_verified = True
 
+    # === NODE ROUTING (v2.1.0) ===
+    # Try to route to WattNode if active nodes available
+    if payment_verified:
+        active_nodes = get_active_nodes(capability='scrape')
+        if active_nodes:
+            # Create job for node network
+            job_result = create_job(
+                job_type='scrape',
+                payload={'url': target_url, 'format': output_format},
+                total_payment=SCRAPE_PRICE_WATT,
+                requester_wallet=data.get('wallet', 'api_key_user')
+            )
+            
+            if job_result.get('routed'):
+                job_id = job_result.get('job_id')
+                # Wait for node to complete (30s timeout)
+                node_result = wait_for_job_result(job_id, timeout=30)
+                
+                if node_result.get('success'):
+                    # Node completed the job
+                    result = node_result.get('result', {})
+                    response_data = {
+                        'success': True,
+                        'url': target_url,
+                        'content': result.get('content', ''),
+                        'format': output_format,
+                        'status_code': result.get('status_code', 200),
+                        'timestamp': datetime.utcnow().isoformat() + 'Z',
+                        'routed_to_node': True,
+                        'node_id': node_result.get('node_id')
+                    }
+                    if tx_signature:
+                        response_data['tx_verified'] = True
+                        response_data['watt_charged'] = SCRAPE_PRICE_WATT
+                    return jsonify(response_data), 200
+                else:
+                    # Node timeout - cancel job and fallback to centralized
+                    cancel_job(job_id)
+                    # Continue to centralized scraper below
+
+    # === CENTRALIZED FALLBACK ===
     headers = {
         'User-Agent': random.choice(SCRAPE_USER_AGENTS),
         'Accept': 'text/html,application/json;q=0.9,*/*;q=0.8',
@@ -890,13 +939,15 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    active_nodes = len(get_active_nodes())
     return jsonify({
         'status': 'ok', 
-        'version': '1.9.0',
+        'version': '2.1.0',
         'grok': bool(grok_client), 
         'claude': bool(claude_client),
         'proxy': True,
-        'admin': True
+        'admin': True,
+        'active_nodes': active_nodes
     })
 
 
