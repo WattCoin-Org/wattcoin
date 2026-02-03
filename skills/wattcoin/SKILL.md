@@ -1,3 +1,15 @@
+---
+name: wattcoin
+description: Pay and earn WATT tokens for agent tasks on Solana.
+homepage: https://wattcoin.org
+metadata:
+  clawdbot:
+    requires:
+      env: ["WATT_WALLET_PRIVATE_KEY"]
+      bins: ["python3"]
+    install: ["pip install solana requests base58"]
+---
+
 # WattCoin Skill
 
 Pay and earn WATT tokens for agent tasks on Solana.
