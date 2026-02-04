@@ -65,12 +65,16 @@ from api_llm import llm_bp, verify_watt_payment, save_used_signature
 from api_reputation import reputation_bp
 from api_tasks import tasks_bp
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
+from api_pr_review import pr_review_bp
+from api_webhooks import webhooks_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(bounties_bp)
 app.register_blueprint(llm_bp)
 app.register_blueprint(reputation_bp)
 app.register_blueprint(tasks_bp)
 app.register_blueprint(nodes_bp)
+app.register_blueprint(pr_review_bp)
+app.register_blueprint(webhooks_bp)
 
 # =============================================================================
 # API CLIENTS
