@@ -311,7 +311,7 @@ def wsi_chat():
     # Call Grok
     try:
         response = grok_client.chat.completions.create(
-            model="grok-beta",
+            model="grok-3",
             messages=messages,
             temperature=0.7,
             max_tokens=2000
@@ -420,7 +420,7 @@ def wsi_info():
         "system": "WattCoin SuperIntelligence (WSI)",
         "version": "1.0.0 - Phase 1",
         "phase": "Phase 1: Single Grok Model",
-        "model": "grok-beta",
+        "model": "grok-3",
         "requirements": {
             "min_balance": MIN_WATT_BALANCE,
             "daily_limit": DAILY_QUERY_LIMIT
