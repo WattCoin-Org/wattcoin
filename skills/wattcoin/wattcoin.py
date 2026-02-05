@@ -17,6 +17,8 @@ WATT_DECIMALS = 6
 
 WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
 
+SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
