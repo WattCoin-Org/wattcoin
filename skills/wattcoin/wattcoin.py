@@ -212,6 +212,25 @@ def watt_to_usd(watt_amount: float, price_per_watt: float) -> float:
         raise ValueError("Amounts cannot be negative")
     return round(watt_amount * price_per_watt, 2)
 
+def format_watt_amount(amount: float) -> str:
+    """ Format WATT amount with thousand separators.
+
+    Args:
+        amount: WATT amount to format
+
+    Returns:
+        Formatted string with commas
+
+    Example:
+        >>> format_watt_amount(1000)
+        '1,000 WATT'
+        >>> format_watt_amount(1234567.5)
+        '1,234,567.5 WATT'
+    """
+    if amount < 0:
+        raise ValueError("Amount cannot be negative")
+    return f"{amount:,.1f} WATT".rstrip('0').rstrip('.')
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
