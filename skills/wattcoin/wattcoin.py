@@ -82,16 +82,16 @@ def get_wallet_address() -> str:
 def watt_balance(wallet: Optional[str] = None) -> float:
     """
     Get WATT balance for a wallet address.
-    
+
     Args:
         wallet: Solana wallet address (default: your wallet)
-        
+
     Returns:
         WATT balance as float
     """
     if wallet is None:
         wallet = get_wallet_address()
-    
+
     try:
         # Get token accounts for wallet
         resp = requests.post(SOLANA_RPC, json={
@@ -104,24 +104,46 @@ def watt_balance(wallet: Optional[str] = None) -> float:
                 {"encoding": "jsonParsed"}
             ]
         }, timeout=15)
-        
+
         data = resp.json()
         accounts = data.get("result", {}).get("value", [])
-        
+
         if not accounts:
             return 0.0
-        
+
         # Sum balances from all token accounts
         total = 0.0
         for acc in accounts:
             info = acc.get("account", {}).get("data", {}).get("parsed", {}).get("info", {})
             amount = info.get("tokenAmount", {}).get("uiAmount", 0)
             total += amount or 0
-        
+
         return total
-        
+
     except Exception as e:
         raise RuntimeError(f"Failed to get balance: {e}")
+
+def watt_balance_formatted(wallet: Optional[str] = None) -> str:
+    """
+    Get WATT balance formatted for human-readable display.
+
+    Args:
+        wallet: Solana wallet address (default: your wallet)
+
+    Returns:
+        Formatted balance string like "1,234,567 WATT"
+
+    Example:
+        >>> watt_balance_formatted()
+        '1,234,567 WATT'
+    """
+    try:
+        balance = watt_balance(wallet)
+        # Format with commas, round to nearest whole number
+        formatted = f"{balance:,.0f} WATT"
+        return formatted
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # =============================================================================
 # SEND
