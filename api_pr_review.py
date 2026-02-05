@@ -290,7 +290,15 @@ def review_pr():
     
     # Parse request
     data = request.get_json()
+
+    # Log incoming request for debugging
+    print(f"[REVIEW API] Received request - Content-Type: {request.content_type}", flush=True)
+    print(f"[REVIEW API] Data keys: {list(data.keys()) if data else 'None'}", flush=True)
+    if data:
+        print(f"[REVIEW API] pr_url present: {'pr_url' in data}, value: {data.get('pr_url', 'N/A')[:80]}", flush=True)
+
     if not data:
+        print(f"[REVIEW API] Validation failed: Request body required", flush=True)
         return jsonify({
             "success": False,
             "error": "Request body required"
