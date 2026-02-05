@@ -212,7 +212,7 @@ def call_grok_review(pr_data, security_warnings):
         
         # Call Grok
         response = grok_client.chat.completions.create(
-            model="grok-4-1-fast-reasoning",
+            model="grok-code-fast-1",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=1000
