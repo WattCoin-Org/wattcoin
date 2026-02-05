@@ -32,6 +32,7 @@ import os
 import json
 import time
 import random
+import logging
 import ipaddress
 import socket
 from urllib.parse import urlparse
@@ -63,6 +64,20 @@ from scraper_errors import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logger = logging.getLogger("wattcoin.scraper")
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setLevel(logging.DEBUG)
+    _handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S"
+    ))
+    logger.addHandler(_handler)
 
 # CORS - allow wattcoin.org and local dev
 CORS(app, origins=[
@@ -687,18 +702,23 @@ def scrape():
         data = request.get_json(silent=True) or {}
         target_url = data.get('url', '').strip()
         output_format = (data.get('format') or 'text').strip().lower()
+        client_ip = _get_client_ip()
+        
+        logger.info("scrape request received | ip=%s url=%.120s format=%s", client_ip, target_url or '<empty>', output_format)
         
         # === INPUT VALIDATION ===
         
         # Validate URL
         is_valid, url_error = validate_url(target_url)
         if not is_valid:
+            logger.warning("url validation failed | ip=%s error=%s", client_ip, url_error.error_code.value)
             response, status = url_error.to_response()
             return jsonify(response), status
         
         # Validate format
         is_valid, format_error = validate_format(output_format)
         if not is_valid:
+            logger.warning("format validation failed | ip=%s format=%s", client_ip, output_format)
             response, status = format_error.to_response()
             return jsonify(response), status
         
@@ -708,6 +728,7 @@ def scrape():
         
         # Validate URL with security checks
         if not _validate_scrape_url(target_url):
+            logger.warning("url blocked by security check | ip=%s url=%.120s", client_ip, target_url)
             error = ScraperError(
                 ScraperErrorCode.URL_BLOCKED,
                 "URL is blocked or invalid for security reasons",
@@ -725,6 +746,7 @@ def scrape():
         # Validate payment parameters
         is_valid, payment_error = validate_payment_params(api_key, wallet, tx_signature)
         if not is_valid:
+            logger.warning("payment validation failed | ip=%s error=%s", client_ip, payment_error.error_code.value)
             response, status = payment_error.to_response()
             return jsonify(response), status
         
@@ -735,6 +757,7 @@ def scrape():
             # API key authentication
             key_data = _validate_api_key(api_key)
             if not key_data:
+                logger.warning("invalid api key | ip=%s", client_ip)
                 error = ScraperError(
                     ScraperErrorCode.INVALID_API_KEY,
                     "The provided API key is invalid or inactive",
@@ -747,6 +770,7 @@ def scrape():
             tier = key_data.get('tier', 'basic')
             allowed, retry_after = _check_api_key_rate_limit(api_key, target_url, tier)
             if not allowed:
+                logger.warning("api key rate limit exceeded | ip=%s tier=%s retry_after=%s", client_ip, tier, retry_after)
                 error = ScraperError(
                     ScraperErrorCode.RATE_LIMIT_EXCEEDED,
                     f"Rate limit exceeded for tier '{tier}'. Try again in {retry_after} seconds.",
@@ -756,15 +780,18 @@ def scrape():
                 response, status = error.to_response()
                 return jsonify(response), status
             
+            logger.info("api key authenticated | ip=%s tier=%s", client_ip, tier)
             _increment_api_key_usage(api_key)
             payment_verified = True
         else:
             # WATT payment verification
+            logger.info("verifying watt payment | ip=%s wallet=%.40s", client_ip, wallet)
             verified, error_code, error_message = verify_watt_payment(
                 tx_signature, wallet, SCRAPE_PRICE_WATT
             )
             
             if not verified:
+                logger.warning("watt payment failed | ip=%s error_code=%s", client_ip, error_code)
                 # Determine error type
                 if error_code == 'invalid_signature':
                     scraper_error_code = ScraperErrorCode.INVALID_PAYMENT
@@ -783,6 +810,7 @@ def scrape():
                 response, status = error.to_response()
                 return jsonify(response), status
             
+            logger.info("watt payment verified | ip=%s wallet=%.40s", client_ip, wallet)
             save_used_signature(tx_signature)
             payment_verified = True
         
@@ -833,25 +861,36 @@ def scrape():
         }
         
         # Fetch with redirect handling
+        logger.info("fetching url | ip=%s url=%.120s format=%s", client_ip, target_url, output_format)
         try:
             resp = _fetch_with_redirects(target_url, headers)
         except requests.Timeout as e:
+            logger.warning("request timed out | ip=%s url=%.120s elapsed=%ss", client_ip, target_url, SCRAPE_TIMEOUT_SECONDS)
+            error = network_error_to_scraper_error(e)
+            response, status = error.to_response()
+            return jsonify(response), status
+        except requests.exceptions.SSLError as e:
+            logger.warning("ssl error | ip=%s url=%.120s error=%s", client_ip, target_url, str(e)[:120])
             error = network_error_to_scraper_error(e)
             response, status = error.to_response()
             return jsonify(response), status
         except ValueError as e:
             error_msg = str(e)
             if "Too many redirects" in error_msg:
+                logger.warning("too many redirects | ip=%s url=%.120s", client_ip, target_url)
                 error = handle_too_many_redirects()
             else:
+                logger.warning("redirect error | ip=%s url=%.120s reason=%s", client_ip, target_url, error_msg)
                 error = handle_redirect_error(error_msg)
             response, status = error.to_response()
             return jsonify(response), status
         except requests.RequestException as e:
+            logger.warning("network error | ip=%s url=%.120s type=%s error=%s", client_ip, target_url, type(e).__name__, str(e)[:120])
             error = network_error_to_scraper_error(e)
             response, status = error.to_response()
             return jsonify(response), status
         except Exception as e:
+            logger.error("unexpected fetch error | ip=%s url=%.120s type=%s error=%s", client_ip, target_url, type(e).__name__, str(e)[:120])
             error = ScraperError(
                 ScraperErrorCode.INTERNAL_ERROR,
                 "An unexpected error occurred while fetching the URL",
@@ -861,8 +900,10 @@ def scrape():
             return jsonify(response), status
         
         # Validate HTTP response status
+        logger.debug("target responded | ip=%s url=%.120s status=%d", client_ip, target_url, resp.status_code)
         is_valid, http_error = validate_http_status(resp.status_code)
         if not is_valid:
+            logger.warning("http error from target | ip=%s url=%.120s status=%d", client_ip, target_url, resp.status_code)
             response, status = http_error.to_response()
             return jsonify(response), status
         
@@ -872,6 +913,7 @@ def scrape():
         except ValueError as e:
             error_msg = str(e)
             if "Response too large" in error_msg:
+                logger.warning("response too large | ip=%s url=%.120s max_bytes=%d", client_ip, target_url, MAX_CONTENT_BYTES)
                 error = ScraperError(
                     ScraperErrorCode.RESPONSE_TOO_LARGE,
                     "Response exceeds maximum size (2 MB). Use a more specific URL.",
@@ -879,6 +921,7 @@ def scrape():
                     {'max_bytes': MAX_CONTENT_BYTES}
                 )
             else:
+                logger.error("content read error | ip=%s url=%.120s error=%s", client_ip, target_url, error_msg)
                 error = ScraperError(
                     ScraperErrorCode.INTERNAL_ERROR,
                     "Error reading response content",
@@ -887,6 +930,7 @@ def scrape():
             response, status = error.to_response()
             return jsonify(response), status
         except Exception as e:
+            logger.error("unexpected read error | ip=%s url=%.120s type=%s", client_ip, target_url, type(e).__name__)
             error = ScraperError(
                 ScraperErrorCode.INTERNAL_ERROR,
                 "An unexpected error occurred while reading the response",
@@ -897,6 +941,7 @@ def scrape():
         
         # Validate content is not empty
         if len(raw_bytes) == 0:
+            logger.warning("empty response | ip=%s url=%.120s", client_ip, target_url)
             error = ScraperError(
                 ScraperErrorCode.EMPTY_RESPONSE,
                 "The target URL returned empty content",
@@ -953,6 +998,9 @@ def scrape():
             return jsonify(response), status
         
         # === SUCCESS ===
+        content_len = len(content) if isinstance(content, str) else len(json.dumps(content))
+        logger.info("scrape success | ip=%s url=%.120s format=%s status=%d content_len=%d", client_ip, target_url, output_format, resp.status_code, content_len)
+        
         response_data = {
             'success': True,
             'url': target_url,
@@ -973,10 +1021,12 @@ def scrape():
         return jsonify(response_data), 200
         
     except ScraperError as e:
+        logger.warning("scraper error (caught) | error=%s message=%s", e.error_code.value, e.message)
         response, status = e.to_response()
         return jsonify(response), status
     except Exception as e:
         # Catch any unexpected errors
+        logger.error("unhandled scraper exception | type=%s error=%s", type(e).__name__, str(e)[:200], exc_info=True)
         error = ScraperError(
             ScraperErrorCode.INTERNAL_ERROR,
             "An unexpected error occurred while processing your request",

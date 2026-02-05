@@ -321,6 +321,48 @@ class TestNetworkErrors:
         assert response.status_code == 502
         data = response.get_json()
         assert data['error'] == ScraperErrorCode.CONNECTION_ERROR.value
+    
+    def test_ssl_certificate_error(self, client):
+        """Test error handling for SSL/TLS certificate errors."""
+        with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+            with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                    with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                        mock_fetch.side_effect = requests.exceptions.SSLError(
+                            'certificate verify failed: unable to get local issuer certificate'
+                        )
+                        
+                        response = client.post('/api/v1/scrape', json={
+                            'url': 'https://self-signed.example.com',
+                            'wallet': 'wallet123',
+                            'tx_signature': 'sig123'
+                        })
+        
+        assert response.status_code == 502
+        data = response.get_json()
+        assert data['error'] == ScraperErrorCode.SSL_ERROR.value
+        assert 'SSL' in data['message'] or 'certificate' in data['message'].lower()
+    
+    def test_host_unreachable(self, client):
+        """Test error handling for unreachable host."""
+        with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+            with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                    with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                        mock_fetch.side_effect = requests.ConnectionError(
+                            'Network is unreachable'
+                        )
+                        
+                        response = client.post('/api/v1/scrape', json={
+                            'url': 'https://example.com',
+                            'wallet': 'wallet123',
+                            'tx_signature': 'sig123'
+                        })
+        
+        assert response.status_code == 502
+        data = response.get_json()
+        assert data['error'] == ScraperErrorCode.HOST_UNREACHABLE.value
+        assert 'unreachable' in data['message'].lower()
 
 
 # =============================================================================
@@ -425,6 +467,26 @@ class TestHTTPStatusCodes:
         data = response.get_json()
         assert data['error'] == ScraperErrorCode.HTTP_ERROR.value
         assert '500' in data['message']
+    
+    def test_http_503_service_unavailable(self, client):
+        """Test handling of HTTP 503 Service Unavailable."""
+        with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+            with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                    with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                        mock_fetch.return_value = MockResponse(b'', 503, 'utf-8')
+                        
+                        response = client.post('/api/v1/scrape', json={
+                            'url': 'https://example.com',
+                            'wallet': 'wallet123',
+                            'tx_signature': 'sig123'
+                        })
+        
+        assert response.status_code == 502
+        data = response.get_json()
+        assert data['error'] == ScraperErrorCode.HTTP_ERROR.value
+        assert '503' in data['message']
+        assert data['status_code'] == 503
 
 
 # =============================================================================
@@ -643,3 +705,251 @@ class TestSuccessScenarios:
         assert data['success'] is True
         assert data['api_key_used'] is True
         assert data['tier'] == 'premium'
+
+
+# =============================================================================
+# LOGGING TESTS
+# =============================================================================
+
+class TestLogging:
+    """Verify that scraper actions produce structured log output."""
+    
+    def test_logs_on_successful_scrape(self, client, caplog):
+        """Successful scrape produces INFO-level log with url and format."""
+        import logging
+        with caplog.at_level(logging.INFO, logger='wattcoin.scraper'):
+            with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+                with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                    with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                        with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                            mock_fetch.return_value = MockResponse(
+                                b'<html><body><p>log test</p></body></html>', 200, 'utf-8'
+                            )
+                            client.post('/api/v1/scrape', json={
+                                'url': 'https://example.com',
+                                'format': 'text',
+                                'wallet': 'w1',
+                                'tx_signature': 's1'
+                            })
+        
+        # Should have at least a "request received" and "success" log
+        messages = ' '.join(caplog.messages)
+        assert 'scrape request received' in messages
+        assert 'scrape success' in messages
+    
+    def test_logs_on_network_error(self, client, caplog):
+        """Network errors are logged at WARNING level."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger='wattcoin.scraper'):
+            with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+                with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                    with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                        with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                            mock_fetch.side_effect = requests.Timeout('timed out')
+                            client.post('/api/v1/scrape', json={
+                                'url': 'https://slow.example.com',
+                                'wallet': 'w1',
+                                'tx_signature': 's1'
+                            })
+        
+        messages = ' '.join(caplog.messages)
+        assert 'timed out' in messages
+    
+    def test_logs_on_ssl_error(self, client, caplog):
+        """SSL errors are logged at WARNING level with truncated detail."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger='wattcoin.scraper'):
+            with patch.object(bridge_web, '_validate_scrape_url', return_value=True):
+                with patch.object(bridge_web, '_validate_api_key', return_value=None):
+                    with patch.object(bridge_web, 'verify_watt_payment', return_value=(True, None, None)):
+                        with patch.object(bridge_web, '_fetch_with_redirects') as mock_fetch:
+                            mock_fetch.side_effect = requests.exceptions.SSLError(
+                                'certificate verify failed'
+                            )
+                            client.post('/api/v1/scrape', json={
+                                'url': 'https://bad-cert.example.com',
+                                'wallet': 'w1',
+                                'tx_signature': 's1'
+                            })
+        
+        messages = ' '.join(caplog.messages)
+        assert 'ssl' in messages.lower()
+
+
+# =============================================================================
+# WATTNODE LOCAL SCRAPER TESTS
+# =============================================================================
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'wattnode', 'services'))
+from scraper import (
+    local_scrape,
+    InvalidURLError,
+    TimeoutError_,
+    SSLError as NodeSSLError,
+    DNSError as NodeDNSError,
+    ConnectionRefusedError_ as NodeConnRefused,
+    HostUnreachableError as NodeHostUnreachable,
+    HTTPError as NodeHTTPError,
+    ResponseTooLargeError,
+    EmptyResponseError as NodeEmptyResponse,
+    InvalidJSONError as NodeInvalidJSON,
+    ParsingError as NodeParsingError,
+    ScraperException,
+)
+
+
+class TestWattNodeScraperValidation:
+    """Unit tests for wattnode/services/scraper.py error handling."""
+    
+    def test_missing_url_raises(self):
+        """Empty URL raises InvalidURLError."""
+        with pytest.raises(InvalidURLError):
+            local_scrape('')
+    
+    def test_malformed_url_raises(self):
+        """URL without scheme raises InvalidURLError."""
+        with pytest.raises(InvalidURLError):
+            local_scrape('example.com/no-scheme')
+    
+    def test_timeout_raises(self):
+        """requests.Timeout maps to TimeoutError_."""
+        with patch('scraper.requests.get') as mock_get:
+            mock_get.side_effect = requests.Timeout('timed out')
+            with pytest.raises(TimeoutError_) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.error_code == 'timeout'
+            assert exc_info.value.status_code == 504
+    
+    def test_ssl_error_raises(self):
+        """requests SSLError maps to node SSLError."""
+        with patch('scraper.requests.get') as mock_get:
+            mock_get.side_effect = requests.exceptions.SSLError('cert verify failed')
+            with pytest.raises(NodeSSLError) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.error_code == 'ssl_error'
+            assert exc_info.value.status_code == 502
+    
+    def test_dns_error_raises(self):
+        """DNS failure maps to DNSError."""
+        with patch('scraper.requests.get') as mock_get:
+            mock_get.side_effect = requests.ConnectionError('Name or service not known')
+            with pytest.raises(NodeDNSError) as exc_info:
+                local_scrape('https://nonexistent.invalid')
+            assert exc_info.value.error_code == 'dns_error'
+    
+    def test_connection_refused_raises(self):
+        """Connection refused maps correctly."""
+        with patch('scraper.requests.get') as mock_get:
+            mock_get.side_effect = requests.ConnectionError('Connection refused')
+            with pytest.raises(NodeConnRefused) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.error_code == 'connection_error'
+    
+    def test_host_unreachable_raises(self):
+        """Network unreachable maps to HostUnreachableError."""
+        with patch('scraper.requests.get') as mock_get:
+            mock_get.side_effect = requests.ConnectionError('Network is unreachable')
+            with pytest.raises(NodeHostUnreachable) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.error_code == 'host_unreachable'
+    
+    def test_http_404_raises(self):
+        """HTTP 404 maps to HTTPError with status_code field."""
+        mock_resp = Mock()
+        mock_resp.status_code = 404
+        with patch('scraper.requests.get', return_value=mock_resp):
+            with pytest.raises(NodeHTTPError) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.http_status_code == 404
+            assert '404' in str(exc_info.value)
+            assert exc_info.value.to_dict()['status_code'] == 404
+    
+    def test_http_503_raises(self):
+        """HTTP 503 maps to HTTPError with correct message."""
+        mock_resp = Mock()
+        mock_resp.status_code = 503
+        with patch('scraper.requests.get', return_value=mock_resp):
+            with pytest.raises(NodeHTTPError) as exc_info:
+                local_scrape('https://example.com')
+            assert exc_info.value.http_status_code == 503
+            assert '503' in str(exc_info.value)
+    
+    def test_response_too_large_raises(self):
+        """Oversized response raises ResponseTooLargeError."""
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        # Return chunks that exceed MAX_SIZE (2 MB)
+        mock_resp.iter_content = Mock(return_value=[b'x' * (2 * 1024 * 1024 + 1)])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            with pytest.raises(ResponseTooLargeError) as exc_info:
+                local_scrape('https://example.com')
+            d = exc_info.value.to_dict()
+            assert d['max_bytes'] == 2 * 1024 * 1024
+            assert 'received_bytes' in d
+    
+    def test_empty_response_raises(self):
+        """Empty body raises EmptyResponseError."""
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        mock_resp.iter_content = Mock(return_value=[b''])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            with pytest.raises(NodeEmptyResponse):
+                local_scrape('https://example.com')
+    
+    def test_invalid_json_raises(self):
+        """Non-JSON body with format='json' raises InvalidJSONError."""
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        mock_resp.iter_content = Mock(return_value=[b'this is not json'])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            with pytest.raises(NodeInvalidJSON) as exc_info:
+                local_scrape('https://example.com', format='json')
+            assert exc_info.value.error_code == 'invalid_json'
+    
+    def test_json_success(self):
+        """Valid JSON is parsed and returned as dict."""
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        mock_resp.iter_content = Mock(return_value=[b'{"hello": "world"}'])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            result = local_scrape('https://example.com', format='json')
+        assert result == {"hello": "world"}
+    
+    def test_text_success(self):
+        """HTML is stripped to text correctly."""
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        mock_resp.iter_content = Mock(return_value=[
+            b'<html><body><script>bad</script><p>Good text</p></body></html>'
+        ])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            result = local_scrape('https://example.com', format='text')
+        assert 'Good text' in result
+        assert 'bad' not in result
+    
+    def test_html_success(self):
+        """HTML format returns raw HTML string."""
+        html = b'<html><body><div>Raw</div></body></html>'
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = 'utf-8'
+        mock_resp.iter_content = Mock(return_value=[html])
+        with patch('scraper.requests.get', return_value=mock_resp):
+            result = local_scrape('https://example.com', format='html')
+        assert result == html.decode('utf-8')
+    
+    def test_error_to_dict_format(self):
+        """ScraperException.to_dict() returns canonical error envelope."""
+        err = ScraperException("test msg", "test_code", 418)
+        d = err.to_dict()
+        assert d == {
+            'success': False,
+            'error': 'test_code',
+            'message': 'test msg'
+        }

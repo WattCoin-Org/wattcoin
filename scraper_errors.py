@@ -28,6 +28,7 @@ class ScraperErrorCode(Enum):
     TIMEOUT = "timeout"
     CONNECTION_ERROR = "connection_error"
     DNS_ERROR = "dns_error"
+    SSL_ERROR = "ssl_error"
     REDIRECT_ERROR = "redirect_error"
     TOO_MANY_REDIRECTS = "too_many_redirects"
     HTTP_ERROR = "http_error"
@@ -210,6 +211,14 @@ def network_error_to_scraper_error(
             ScraperErrorCode.TIMEOUT,
             "Request timed out. The target server took too long to respond.",
             504
+        )
+    
+    # SSL/TLS certificate errors (must come before ConnectionError — SSLError is a subclass)
+    if isinstance(exc, requests.exceptions.SSLError):
+        return ScraperError(
+            ScraperErrorCode.SSL_ERROR,
+            "SSL/TLS certificate error. The target server's certificate is invalid or untrusted.",
+            502
         )
     
     # Connection errors
