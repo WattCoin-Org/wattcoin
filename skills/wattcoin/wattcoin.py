@@ -188,6 +188,22 @@ def watt_balance(wallet_address: Optional[str] = None, raise_on_error: bool = Fa
             raise APIError(f"Failed to fetch balance: {e}")
         return 0
 
+def watt_balance_formatted(wallet_address: str) -> str:
+    """ Get formatted WATT balance with commas and suffix.
+
+    Args:
+        wallet_address: Solana wallet address
+
+    Returns:
+        Formatted balance string (e.g., "1,234,567.89 WATT")
+
+    """
+    try:
+        balance = watt_balance(wallet_address)
+        return f"{balance:,.2f} WATT"
+    except Exception as e:
+        return f"Error: {e}"
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
