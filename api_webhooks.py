@@ -233,28 +233,38 @@ def execute_auto_payment(pr_number, wallet, amount):
         except Exception as e:
             return None, f"Invalid recipient wallet address: {e}"
         
-        # For Token-2022, we need to query the actual token account, not calculate ATA
+        # Query recipient's token accounts using direct RPC call (more reliable than SDK)
         print(f"[PAYMENT] Looking up recipient's WATT token account...", flush=True)
         try:
-            from solders.rpc.config import RpcTokenAccountsFilterMint
-            token_accounts = client.get_token_accounts_by_owner(
-                recipient_pubkey,
-                RpcTokenAccountsFilterMint(mint_pubkey)
-            )
+            import requests
+            rpc_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "getTokenAccountsByOwner",
+                "params": [
+                    wallet,
+                    {"mint": WATT_MINT},
+                    {"encoding": "jsonParsed"}
+                ]
+            }
             
-            if not token_accounts.value:
-                return None, f"Recipient wallet has no WATT token account. Please have them receive WATT once first."
+            rpc_response = requests.post(SOLANA_RPC, json=rpc_payload, timeout=10)
+            rpc_data = rpc_response.json()
             
-            # Use the first token account found
-            recipient_ata = Pubkey.from_string(token_accounts.value[0].pubkey)
-            print(f"[PAYMENT] Found recipient token account: {str(recipient_ata)[:8]}...", flush=True)
+            if "result" in rpc_data and rpc_data["result"]["value"]:
+                # Found token account(s)
+                token_account_pubkey = rpc_data["result"]["value"][0]["pubkey"]
+                recipient_ata = Pubkey.from_string(token_account_pubkey)
+                print(f"[PAYMENT] Found recipient token account: {str(recipient_ata)[:8]}...", flush=True)
+            else:
+                return None, f"Recipient wallet has no WATT token account. Please have them receive WATT once first to create the account."
             
         except Exception as e:
-            print(f"[PAYMENT] Error looking up token account: {e}, falling back to ATA calculation", flush=True)
-            recipient_ata = get_associated_token_address(recipient_pubkey, mint_pubkey)
+            print(f"[PAYMENT] Error looking up token account: {e}", flush=True)
+            return None, f"Failed to lookup recipient token account: {e}"
         
         print(f"[PAYMENT] Sender ATA: {str(sender_ata)[:8]}...", flush=True)
-        print(f"[PAYMENT] Recipient ATA: {str(recipient_ata)[:8]}...", flush=True)
+        print(f"[PAYMENT] Recipient ATA: {str(recipient_ata)[:8]}... (Full: {str(recipient_ata)})", flush=True)
         
         # Convert amount to lamports
         amount_lamports = int(amount * (10 ** WATT_DECIMALS))
