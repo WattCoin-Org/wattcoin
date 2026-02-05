@@ -19,7 +19,7 @@ RATE_LIMIT_FILE = f"{DATA_DIR}/pr_rate_limits.json"
 SECURITY_LOG_FILE = f"{DATA_DIR}/security_logs.json"
 
 # Rate limits
-MAX_PRS_PER_DAY = 5
+MAX_PRS_PER_DAY = 100
 PAYOUT_COOLDOWN_HOURS = 24
 
 # Emergency controls (env vars)
