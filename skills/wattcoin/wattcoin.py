@@ -231,6 +231,31 @@ def format_watt_amount(amount: float) -> str:
         raise ValueError("Amount cannot be negative")
     return f"{amount:,.1f} WATT".rstrip('0').rstrip('.')
 
+def validate_wallet_address(address: str) -> bool:
+    """ Validate Solana wallet address format.
+
+    Args:
+        address: Wallet address to validate
+
+    Returns:
+        True if valid Solana address format
+
+    Example:
+        >>> validate_wallet_address("5QfWmeQFp5cbtGNaqrn73ELkvxUBtw8bRNFCF9fi38Az")
+        True
+        >>> validate_wallet_address("invalid")
+        False
+    """
+    import re
+    if not address or not isinstance(address, str):
+        return False
+    # Solana addresses are base58, 32-44 characters
+    if len(address) < 32 or len(address) > 44:
+        return False
+    # Check base58 characters only
+    base58_pattern = r'^[1-9A-HJ-NP-Za-km-z]+$'
+    return bool(re.match(base58_pattern, address))
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
