@@ -204,6 +204,8 @@ def watt_balance_formatted(wallet_address: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
+# Closes #42
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
