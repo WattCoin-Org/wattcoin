@@ -12,6 +12,9 @@ import struct
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+# WATT token decimals (6 decimals like USDC)
+WATT_DECIMALS = 6
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
