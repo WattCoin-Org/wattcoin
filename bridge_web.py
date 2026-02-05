@@ -45,6 +45,22 @@ from flask_cors import CORS
 from anthropic import Anthropic
 from openai import OpenAI
 
+from scraper_errors import (
+    ScraperError,
+    ScraperErrorCode,
+    validate_url,
+    validate_format,
+    validate_payment_params,
+    validate_response_size,
+    validate_http_status,
+    validate_encoding,
+    validate_content_not_empty,
+    network_error_to_scraper_error,
+    content_parsing_error,
+    handle_redirect_error,
+    handle_too_many_redirects
+)
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
 
@@ -638,6 +654,8 @@ def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
     
+    Comprehensive error handling with detailed error codes and messages.
+    
     Request:
         {
             "url": "https://example.com",
@@ -650,173 +668,322 @@ def scrape():
         X-API-Key: <key>  (optional - skips payment if valid)
     
     Pricing: 100 WATT per scrape
+    
+    Error Codes:
+        - missing_url, invalid_url, url_blocked
+        - invalid_format
+        - missing_payment, invalid_payment
+        - invalid_api_key, rate_limit_exceeded
+        - timeout, connection_error, dns_error
+        - response_too_large, empty_response
+        - invalid_json, invalid_html
+        - http_error, redirect_error
+        - internal_error
     """
     SCRAPE_PRICE_WATT = 100
     
-    data = request.get_json(silent=True) or {}
-    target_url = data.get('url', '').strip()
-    output_format = (data.get('format') or 'text').strip().lower()
-
-    if not target_url:
-        return jsonify({'success': False, 'error': 'URL required'}), 400
-    if output_format not in {'text', 'html', 'json'}:
-        return jsonify({'success': False, 'error': 'Invalid format'}), 400
-    if not _validate_scrape_url(target_url):
-        return jsonify({'success': False, 'error': 'Invalid or blocked URL'}), 400
-
-    # Check for API key authentication (premium bypass)
-    api_key = request.headers.get('X-API-Key', '').strip()
-    key_data = _validate_api_key(api_key) if api_key else None
-    payment_verified = False
-    tx_signature = None
-    
-    if api_key and not key_data:
-        # Invalid API key provided
-        return jsonify({'success': False, 'error': 'Invalid API key'}), 401
-    
-    if key_data:
-        # Valid API key - use rate limiting, skip payment
-        tier = key_data.get('tier', 'basic')
-        allowed, retry_after = _check_api_key_rate_limit(api_key, target_url, tier)
-        if not allowed:
-            return jsonify({
-                'success': False,
-                'error': 'Rate limit exceeded',
-                'retry_after_seconds': retry_after,
-                'tier': tier
-            }), 429
-        # Increment usage count
-        _increment_api_key_usage(api_key)
-        payment_verified = True  # API key acts as payment
-    else:
-        # No API key - require WATT payment
+    try:
+        # Parse request
+        data = request.get_json(silent=True) or {}
+        target_url = data.get('url', '').strip()
+        output_format = (data.get('format') or 'text').strip().lower()
+        
+        # === INPUT VALIDATION ===
+        
+        # Validate URL
+        is_valid, url_error = validate_url(target_url)
+        if not is_valid:
+            response, status = url_error.to_response()
+            return jsonify(response), status
+        
+        # Validate format
+        is_valid, format_error = validate_format(output_format)
+        if not is_valid:
+            response, status = format_error.to_response()
+            return jsonify(response), status
+        
+        # Set default format if needed
+        if not output_format:
+            output_format = 'text'
+        
+        # Validate URL with security checks
+        if not _validate_scrape_url(target_url):
+            error = ScraperError(
+                ScraperErrorCode.URL_BLOCKED,
+                "URL is blocked or invalid for security reasons",
+                400
+            )
+            response, status = error.to_response()
+            return jsonify(response), status
+        
+        # === AUTHENTICATION ===
+        
+        api_key = request.headers.get('X-API-Key', '').strip()
         wallet = data.get('wallet', '').strip()
         tx_signature = data.get('tx_signature', '').strip()
         
-        if not wallet or not tx_signature:
-            return jsonify({
-                'success': False,
-                'error': 'payment_required',
-                'message': 'Either API key or WATT payment required',
-                'price_watt': SCRAPE_PRICE_WATT,
-                'payment_to': '7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF'
-            }), 402
+        # Validate payment parameters
+        is_valid, payment_error = validate_payment_params(api_key, wallet, tx_signature)
+        if not is_valid:
+            response, status = payment_error.to_response()
+            return jsonify(response), status
         
-        # Verify WATT payment
-        verified, error_code, error_message = verify_watt_payment(
-            tx_signature, wallet, SCRAPE_PRICE_WATT
-        )
+        key_data = None
+        payment_verified = False
         
-        if not verified:
-            return jsonify({
-                'success': False,
-                'error': error_code,
-                'message': error_message
-            }), 400
-        
-        # Mark signature as used
-        save_used_signature(tx_signature)
-        payment_verified = True
-
-    # === NODE ROUTING (v2.1.0) ===
-    # Try to route to WattNode if active nodes available
-    if payment_verified:
-        active_nodes = get_active_nodes(capability='scrape')
-        if active_nodes:
-            # Create job for node network
-            job_result = create_job(
-                job_type='scrape',
-                payload={'url': target_url, 'format': output_format},
-                total_payment=SCRAPE_PRICE_WATT,
-                requester_wallet=data.get('wallet', 'api_key_user')
+        if api_key:
+            # API key authentication
+            key_data = _validate_api_key(api_key)
+            if not key_data:
+                error = ScraperError(
+                    ScraperErrorCode.INVALID_API_KEY,
+                    "The provided API key is invalid or inactive",
+                    401
+                )
+                response, status = error.to_response()
+                return jsonify(response), status
+            
+            # Check rate limit
+            tier = key_data.get('tier', 'basic')
+            allowed, retry_after = _check_api_key_rate_limit(api_key, target_url, tier)
+            if not allowed:
+                error = ScraperError(
+                    ScraperErrorCode.RATE_LIMIT_EXCEEDED,
+                    f"Rate limit exceeded for tier '{tier}'. Try again in {retry_after} seconds.",
+                    429,
+                    {'retry_after_seconds': retry_after, 'tier': tier}
+                )
+                response, status = error.to_response()
+                return jsonify(response), status
+            
+            _increment_api_key_usage(api_key)
+            payment_verified = True
+        else:
+            # WATT payment verification
+            verified, error_code, error_message = verify_watt_payment(
+                tx_signature, wallet, SCRAPE_PRICE_WATT
             )
             
-            if job_result.get('routed'):
-                job_id = job_result.get('job_id')
-                # Wait for node to complete (30s timeout)
-                node_result = wait_for_job_result(job_id, timeout=30)
-                
-                if node_result.get('success'):
-                    # Node completed the job
-                    result = node_result.get('result', {})
-                    response_data = {
-                        'success': True,
-                        'url': target_url,
-                        'content': result.get('content', ''),
-                        'format': output_format,
-                        'status_code': result.get('status_code', 200),
-                        'timestamp': datetime.utcnow().isoformat() + 'Z',
-                        'routed_to_node': True,
-                        'node_id': node_result.get('node_id')
-                    }
-                    if tx_signature:
-                        response_data['tx_verified'] = True
-                        response_data['watt_charged'] = SCRAPE_PRICE_WATT
-                    return jsonify(response_data), 200
+            if not verified:
+                # Determine error type
+                if error_code == 'invalid_signature':
+                    scraper_error_code = ScraperErrorCode.INVALID_PAYMENT
+                elif error_code == 'insufficient_amount':
+                    scraper_error_code = ScraperErrorCode.PAYMENT_FAILED
+                elif error_code == 'signature_already_used':
+                    scraper_error_code = ScraperErrorCode.PAYMENT_FAILED
                 else:
-                    # Node timeout - cancel job and fallback to centralized
-                    cancel_job(job_id)
-                    # Continue to centralized scraper below
-
-    # === CENTRALIZED FALLBACK ===
-    headers = {
-        'User-Agent': random.choice(SCRAPE_USER_AGENTS),
-        'Accept': 'text/html,application/json;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9'
-    }
-
-    try:
-        resp = _fetch_with_redirects(target_url, headers)
-    except requests.Timeout:
-        return jsonify({'success': False, 'error': 'Request timeout'}), 504
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except requests.RequestException as e:
-        return jsonify({'success': False, 'error': f'Request failed: {str(e)}'}), 502
-
-    if resp.status_code in {401, 403, 429}:
-        return jsonify({
-            'success': False,
-            'error': 'Request blocked',
-            'status_code': resp.status_code
-        }), 403
-
-    try:
-        raw_bytes = _read_limited_content(resp)
-        encoding = resp.encoding or 'utf-8'
-        if output_format == 'html':
-            content = raw_bytes.decode(encoding, errors='replace')
-        elif output_format == 'json':
-            content = json.loads(raw_bytes.decode(encoding, errors='replace'))
-        else:
-            html_text = raw_bytes.decode(encoding, errors='replace')
-            soup = BeautifulSoup(html_text, 'html.parser')
-            content = soup.get_text(separator=' ', strip=True)
-    except ValueError as e:
-        if str(e) == 'Response too large':
-            return jsonify({'success': False, 'error': 'Response too large'}), 413
-        return jsonify({'success': False, 'error': 'Invalid JSON response'}), 502
+                    scraper_error_code = ScraperErrorCode.PAYMENT_FAILED
+                
+                error = ScraperError(
+                    scraper_error_code,
+                    error_message,
+                    400
+                )
+                response, status = error.to_response()
+                return jsonify(response), status
+            
+            save_used_signature(tx_signature)
+            payment_verified = True
+        
+        # === NODE ROUTING (v2.1.0) ===
+        if payment_verified:
+            active_nodes = get_active_nodes(capability='scrape')
+            if active_nodes:
+                try:
+                    job_result = create_job(
+                        job_type='scrape',
+                        payload={'url': target_url, 'format': output_format},
+                        total_payment=SCRAPE_PRICE_WATT,
+                        requester_wallet=wallet or 'api_key_user'
+                    )
+                    
+                    if job_result.get('routed'):
+                        job_id = job_result.get('job_id')
+                        node_result = wait_for_job_result(job_id, timeout=30)
+                        
+                        if node_result.get('success'):
+                            result = node_result.get('result', {})
+                            response_data = {
+                                'success': True,
+                                'url': target_url,
+                                'content': result.get('content', ''),
+                                'format': output_format,
+                                'status_code': result.get('status_code', 200),
+                                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                                'routed_to_node': True,
+                                'node_id': node_result.get('node_id')
+                            }
+                            if tx_signature:
+                                response_data['tx_verified'] = True
+                                response_data['watt_charged'] = SCRAPE_PRICE_WATT
+                            return jsonify(response_data), 200
+                        else:
+                            # Node timeout - fallback to centralized
+                            cancel_job(job_id)
+                except Exception:
+                    # Node routing error - fall through to centralized
+                    pass
+        
+        # === CENTRALIZED FALLBACK ===
+        headers = {
+            'User-Agent': random.choice(SCRAPE_USER_AGENTS),
+            'Accept': 'text/html,application/json;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        
+        # Fetch with redirect handling
+        try:
+            resp = _fetch_with_redirects(target_url, headers)
+        except requests.Timeout as e:
+            error = network_error_to_scraper_error(e)
+            response, status = error.to_response()
+            return jsonify(response), status
+        except ValueError as e:
+            error_msg = str(e)
+            if "Too many redirects" in error_msg:
+                error = handle_too_many_redirects()
+            else:
+                error = handle_redirect_error(error_msg)
+            response, status = error.to_response()
+            return jsonify(response), status
+        except requests.RequestException as e:
+            error = network_error_to_scraper_error(e)
+            response, status = error.to_response()
+            return jsonify(response), status
+        except Exception as e:
+            error = ScraperError(
+                ScraperErrorCode.INTERNAL_ERROR,
+                "An unexpected error occurred while fetching the URL",
+                500
+            )
+            response, status = error.to_response()
+            return jsonify(response), status
+        
+        # Validate HTTP response status
+        is_valid, http_error = validate_http_status(resp.status_code)
+        if not is_valid:
+            response, status = http_error.to_response()
+            return jsonify(response), status
+        
+        # Read response content with size validation
+        try:
+            raw_bytes = _read_limited_content(resp)
+        except ValueError as e:
+            error_msg = str(e)
+            if "Response too large" in error_msg:
+                error = ScraperError(
+                    ScraperErrorCode.RESPONSE_TOO_LARGE,
+                    "Response exceeds maximum size (2 MB). Use a more specific URL.",
+                    413,
+                    {'max_bytes': MAX_CONTENT_BYTES}
+                )
+            else:
+                error = ScraperError(
+                    ScraperErrorCode.INTERNAL_ERROR,
+                    "Error reading response content",
+                    500
+                )
+            response, status = error.to_response()
+            return jsonify(response), status
+        except Exception as e:
+            error = ScraperError(
+                ScraperErrorCode.INTERNAL_ERROR,
+                "An unexpected error occurred while reading the response",
+                500
+            )
+            response, status = error.to_response()
+            return jsonify(response), status
+        
+        # Validate content is not empty
+        if len(raw_bytes) == 0:
+            error = ScraperError(
+                ScraperErrorCode.EMPTY_RESPONSE,
+                "The target URL returned empty content",
+                502
+            )
+            response, status = error.to_response()
+            return jsonify(response), status
+        
+        # Parse content based on format
+        try:
+            # Validate and get encoding
+            charset = resp.encoding
+            is_valid, encoding = validate_encoding(charset)
+            
+            if output_format == 'html':
+                try:
+                    content = raw_bytes.decode(encoding, errors='replace')
+                except Exception:
+                    content = raw_bytes.decode('utf-8', errors='replace')
+            elif output_format == 'json':
+                try:
+                    text = raw_bytes.decode(encoding, errors='replace')
+                    content = json.loads(text)
+                except json.JSONDecodeError:
+                    error = content_parsing_error('json')
+                    response, status = error.to_response()
+                    return jsonify(response), status
+                except Exception as e:
+                    error = content_parsing_error('json', e)
+                    response, status = error.to_response()
+                    return jsonify(response), status
+            else:  # text
+                try:
+                    html_text = raw_bytes.decode(encoding, errors='replace')
+                    soup = BeautifulSoup(html_text, 'html.parser')
+                    content = soup.get_text(separator=' ', strip=True)
+                except Exception as e:
+                    error = content_parsing_error('text', e)
+                    response, status = error.to_response()
+                    return jsonify(response), status
+        except Exception as e:
+            error = ScraperError(
+                ScraperErrorCode.PARSING_ERROR,
+                f"An error occurred while parsing the response",
+                500
+            )
+            response, status = error.to_response()
+            return jsonify(response), status
+        
+        # Validate content is not empty after parsing
+        is_valid, empty_error = validate_content_not_empty(content, output_format)
+        if not is_valid:
+            response, status = empty_error.to_response()
+            return jsonify(response), status
+        
+        # === SUCCESS ===
+        response_data = {
+            'success': True,
+            'url': target_url,
+            'content': content,
+            'format': output_format,
+            'status_code': resp.status_code,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+        
+        # Add payment info
+        if tx_signature:
+            response_data['tx_verified'] = True
+            response_data['watt_charged'] = SCRAPE_PRICE_WATT
+        elif key_data:
+            response_data['api_key_used'] = True
+            response_data['tier'] = key_data.get('tier', 'basic')
+        
+        return jsonify(response_data), 200
+        
+    except ScraperError as e:
+        response, status = e.to_response()
+        return jsonify(response), status
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Parsing error: {str(e)}'}), 500
-
-    response_data = {
-        'success': True,
-        'url': target_url,
-        'content': content,
-        'format': output_format,
-        'status_code': resp.status_code,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
-    
-    # Add payment info if paid with WATT
-    if tx_signature:
-        response_data['tx_verified'] = True
-        response_data['watt_charged'] = SCRAPE_PRICE_WATT
-    elif key_data:
-        response_data['api_key_used'] = True
-        response_data['tier'] = key_data.get('tier', 'basic')
-    
-    return jsonify(response_data), 200
+        # Catch any unexpected errors
+        error = ScraperError(
+            ScraperErrorCode.INTERNAL_ERROR,
+            "An unexpected error occurred while processing your request",
+            500
+        )
+        response, status = error.to_response()
+        return jsonify(response), status
 
 
 # =============================================================================
