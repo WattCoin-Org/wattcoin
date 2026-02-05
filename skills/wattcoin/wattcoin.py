@@ -119,9 +119,30 @@ def watt_balance(wallet: Optional[str] = None) -> float:
             total += amount or 0
         
         return total
-        
+
     except Exception as e:
         raise RuntimeError(f"Failed to get balance: {e}")
+
+def watt_balance_formatted(wallet: Optional[str] = None) -> str:
+    """
+    Get WATT balance formatted for human-readable display.
+
+    Args:
+        wallet: Solana wallet address (default: your wallet)
+
+    Returns:
+        Formatted balance string with commas and " WATT" suffix
+
+    Example:
+        >>> watt_balance_formatted()
+        '1,234,567.89 WATT'
+    """
+    try:
+        balance = watt_balance(wallet)
+        formatted = f"{balance:,.2f} WATT"
+        return formatted
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # =============================================================================
 # SEND
