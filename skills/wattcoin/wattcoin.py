@@ -206,6 +206,12 @@ def watt_balance_formatted(wallet_address: str) -> str:
 
 # Closes #42
 
+def watt_to_usd(watt_amount: float, price_per_watt: float) -> float:
+    """Convert WATT to USD. Returns rounded value."""
+    if watt_amount < 0 or price_per_watt < 0:
+        raise ValueError("Amounts cannot be negative")
+    return round(watt_amount * price_per_watt, 2)
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
