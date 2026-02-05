@@ -44,9 +44,9 @@ def _get_wallet():
     private_key = os.getenv("WATT_WALLET_PRIVATE_KEY")
     if private_key:
         try:
-            from solana.keypair import Keypair
+            from solders.keypair import Keypair
             key_bytes = base58.b58decode(private_key)
-            _wallet_cache = Keypair.from_bytes(key_bytes)
+            _wallet_cache = Keypair.from_seed(key_bytes)
             return _wallet_cache
         except Exception as e:
             raise ValueError(f"Invalid WATT_WALLET_PRIVATE_KEY: {e}")
@@ -55,13 +55,13 @@ def _get_wallet():
     wallet_file = os.getenv("WATT_WALLET_FILE", os.path.expanduser("~/.wattcoin/wallet.json"))
     if os.path.exists(wallet_file):
         try:
-            from solana.keypair import Keypair
+            from solders.keypair import Keypair
             with open(wallet_file, 'r') as f:
                 key_data = json.load(f)
             if isinstance(key_data, list):
-                _wallet_cache = Keypair.from_bytes(bytes(key_data))
+                _wallet_cache = Keypair.from_seed(bytes(key_data))
             else:
-                _wallet_cache = Keypair.from_bytes(base58.b58decode(key_data))
+                _wallet_cache = Keypair.from_seed(base58.b58decode(key_data))
             return _wallet_cache
         except Exception as e:
             raise ValueError(f"Failed to load wallet from {wallet_file}: {e}")

@@ -60,12 +60,14 @@ CORS(app, origins=[
 # REGISTER ADMIN BLUEPRINT
 # =============================================================================
 from admin_blueprint import admin_bp
+from api_balance import balance_bp
 from api_bounties import bounties_bp
 from api_llm import llm_bp, verify_watt_payment, save_used_signature
 from api_reputation import reputation_bp
 from api_tasks import tasks_bp
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
 app.register_blueprint(admin_bp)
+app.register_blueprint(balance_bp)
 app.register_blueprint(bounties_bp)
 app.register_blueprint(llm_bp)
 app.register_blueprint(reputation_bp)
