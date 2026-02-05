@@ -15,6 +15,8 @@ from datetime import datetime
 # WATT token decimals (6 decimals like USDC)
 WATT_DECIMALS = 6
 
+WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
