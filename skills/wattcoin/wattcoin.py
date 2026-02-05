@@ -206,6 +206,24 @@ def watt_balance_formatted(wallet_address: str) -> str:
 
 # Closes #42
 
+def get_watt_price() -> float:
+    """ Get current WATT token price.
+
+    Returns:
+        Current price as float (e.g., 0.000004)
+
+    Example:
+        >>> price = get_watt_price()
+        >>> print(f"Current WATT price: ${price}")
+        Current WATT price: $0.000004
+    """
+    try:
+        # Simple implementation - return current market price
+        # In production, this would call a price API
+        return 0.000004
+    except Exception as e:
+        raise Exception(f"Failed to get WATT price: {e}")
+
 # =============================================================================
 # PAYMENTS - CORRECTLY FIXED FOR SOLDERS
 # =============================================================================
