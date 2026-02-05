@@ -145,6 +145,7 @@ MAX_REQUESTS_PER_URL = 10
 
 # API Key config
 API_KEYS_FILE = "/app/data/api_keys.json"
+DATA_FILE = "/app/data/bounty_reviews.json"
 API_KEY_RATE_LIMITS = {
     "basic": {"requests_per_hour": 500, "requests_per_url": 50},
     "premium": {"requests_per_hour": 2000, "requests_per_url": 200}
@@ -225,6 +226,20 @@ def _check_api_key_rate_limit(api_key, url, tier):
     key_queue.append(now)
     url_queue.append(now)
     return True, None
+
+
+# =============================================================================
+# BOUNTY DATA HANDLING
+# =============================================================================
+
+def load_bounty_data():
+    """Load bounty data from dashboard for stats endpoint."""
+    try:
+        with open(DATA_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.warning("Failed to load bounty data, returning empty")
+        return {"reviews": {}, "payouts": [], "history": []}
 
 
 def _prune_rate_limit(queue, now):
@@ -1210,6 +1225,66 @@ def unified_pricing():
             }
         }
     })
+
+
+@app.route('/api/v1/bounty-stats', methods=['GET'])
+def bounty_stats():
+    """
+    Public bounty statistics for website.
+    
+    Returns live stats on paid and pending bounties.
+    """
+    try:
+        data = load_bounty_data()
+        payouts = data.get("payouts", [])
+        
+        # Filter paid vs pending
+        paid = [p for p in payouts if p.get("status") == "paid"]
+        pending = [p for p in payouts if p.get("status") != "paid"]
+        
+        # Calculate totals
+        total_paid_watt = sum(p.get("amount", 0) for p in paid)
+        total_pending_watt = sum(p.get("amount", 0) for p in pending)
+        
+        # Average bounty
+        all_amounts = [p.get("amount", 0) for p in payouts if p.get("amount", 0) > 0]
+        avg_bounty = sum(all_amounts) // len(all_amounts) if all_amounts else 0
+        
+        # Recent payouts (last 10, most recent first)
+        recent = sorted(
+            [p for p in paid if p.get("paid_at")],
+            key=lambda x: x.get("paid_at", ""),
+            reverse=True
+        )[:10]
+        
+        # Format recent for public display
+        recent_formatted = []
+        for p in recent:
+            recent_formatted.append({
+                "pr_number": p.get("pr_number"),
+                "author": p.get("author"),
+                "amount": p.get("amount", 0),
+                "paid_at": p.get("paid_at"),
+                "tx_sig": p.get("tx_sig", "")
+            })
+        
+        return jsonify({
+            "success": True,
+            "total_paid_count": len(paid),
+            "total_paid_watt": total_paid_watt,
+            "total_pending_count": len(pending),
+            "total_pending_watt": total_pending_watt,
+            "avg_bounty": avg_bounty,
+            "recent_payouts": recent_formatted,
+            "updated_at": datetime.now().isoformat() + "Z"
+        })
+        
+    except Exception as e:
+        logger.error(f"Bounty stats error: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to load bounty statistics"
+        }), 500
 
 
 if __name__ == '__main__':
