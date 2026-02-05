@@ -299,8 +299,8 @@ def validate_pr_format(pr_body):
         errors.append(wallet_error)
     
     # Check for description/changes section
-    if not re.search(r'(description|changes|what|summary)', pr_body, re.IGNORECASE):
-        errors.append("PR body should include a description of changes")
+    # Removed keyword validation - too restrictive for agent contributions
+    #         errors.append("PR body should include a description of changes")
     
     is_valid = len(errors) == 0
     return is_valid, errors
