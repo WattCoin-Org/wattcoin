@@ -187,7 +187,7 @@ def auto_merge_pr(pr_number, review_score):
 def execute_auto_payment(pr_number, wallet, amount):
     """
     Execute payment directly to contributor wallet.
-    Auto-creates recipient's token account if needed.
+    Looks up recipient's actual token account from blockchain.
     Returns: (tx_signature, error)
     """
     import base58
@@ -196,9 +196,8 @@ def execute_auto_payment(pr_number, wallet, amount):
     from solders.message import Message
     from solders.pubkey import Pubkey
     from solders.keypair import Keypair
-    from spl.token.instructions import get_associated_token_address, transfer_checked, TransferCheckedParams, create_associated_token_account
-    from spl.token.constants import TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
-    from solders.system_program import ID as SYS_PROGRAM_ID
+    from spl.token.instructions import get_associated_token_address, transfer_checked, TransferCheckedParams
+    from spl.token.constants import TOKEN_2022_PROGRAM_ID
     
     try:
         # Configuration
@@ -257,31 +256,6 @@ def execute_auto_payment(pr_number, wallet, amount):
         print(f"[PAYMENT] Sender ATA: {str(sender_ata)[:8]}...", flush=True)
         print(f"[PAYMENT] Recipient ATA: {str(recipient_ata)[:8]}...", flush=True)
         
-        # Check if recipient's token account exists
-        instructions = []
-        try:
-            account_info = client.get_account_info(recipient_ata)
-            if account_info.value is None:
-                print(f"[PAYMENT] Recipient token account doesn't exist - creating it", flush=True)
-                # Create associated token account instruction
-                create_ata_ix = create_associated_token_account(
-                    payer=payer.pubkey(),
-                    owner=recipient_pubkey,
-                    mint=mint_pubkey,
-                )
-                instructions.append(create_ata_ix)
-            else:
-                print(f"[PAYMENT] Recipient token account exists", flush=True)
-        except Exception as e:
-            print(f"[PAYMENT] Error checking account, will try to create: {e}", flush=True)
-            # If error checking, assume it doesn't exist and create it
-            create_ata_ix = create_associated_token_account(
-                payer=payer.pubkey(),
-                owner=recipient_pubkey,
-                mint=mint_pubkey,
-            )
-            instructions.append(create_ata_ix)
-        
         # Convert amount to lamports
         amount_lamports = int(amount * (10 ** WATT_DECIMALS))
         print(f"[PAYMENT] Amount: {amount_lamports} lamports ({amount:,.2f} WATT)", flush=True)
@@ -298,7 +272,6 @@ def execute_auto_payment(pr_number, wallet, amount):
                 decimals=WATT_DECIMALS
             )
         )
-        instructions.append(transfer_ix)
         
         # Get recent blockhash
         recent_blockhash_resp = client.get_latest_blockhash()
@@ -307,13 +280,13 @@ def execute_auto_payment(pr_number, wallet, amount):
         
         # Create and sign transaction
         message = Message.new_with_blockhash(
-            instructions,
+            [transfer_ix],
             payer.pubkey(),
             recent_blockhash
         )
         
         transaction = Transaction([payer], message, recent_blockhash)
-        print(f"[PAYMENT] Transaction created and signed ({len(instructions)} instructions)", flush=True)
+        print(f"[PAYMENT] Transaction created and signed", flush=True)
         
         # Send transaction
         print(f"[PAYMENT] Sending transaction to network...", flush=True)
