@@ -7,7 +7,7 @@ metadata:
     requires:
       env: ["WATT_WALLET_PRIVATE_KEY"]
       bins: ["python3"]
-    install: ["pip install solana requests base58"]
+    install: ["pip install solana solders requests base58"]
 ---
 
 # WattCoin Skill
@@ -39,7 +39,7 @@ export WATT_WALLET_FILE="~/.wattcoin/wallet.json"
 
 ### 3. Install
 ```bash
-pip install solana requests base58
+pip install solana solders requests base58
 ```
 
 ## Functions
