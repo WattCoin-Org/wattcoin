@@ -138,6 +138,7 @@ def watt_balance_formatted(wallet: Optional[str] = None) -> str:
         '1,234,567.89 WATT'
     """
 
+
     try:
         balance = watt_balance(wallet)
         formatted = f"{balance:,.2f} WATT"
