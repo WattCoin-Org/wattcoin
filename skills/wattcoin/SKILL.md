@@ -14,6 +14,9 @@ metadata:
 
 Pay and earn WATT tokens for agent tasks on Solana.
 
+**Updated**: Comprehensive error handling, helper functions, and agent workflows.  
+**Version**: 2.0.0
+
 ## Overview
 
 WattCoin (WATT) is a utility token for AI/agent automation. This skill enables agents to:
@@ -132,6 +135,92 @@ bounties = watt_bounties(type="bounty")
 bounties = watt_bounties(type="agent")
 ```
 
+## Error Handling
+
+The skill now includes comprehensive error handling with custom exception classes:
+
+```python
+from wattcoin import (
+    WattCoinError,          # Base exception
+    WalletError,            # Wallet loading errors
+    APIError,               # API request/response errors
+    InsufficientBalanceError,  # Balance too low
+    TransactionError,       # Transaction signing/sending errors
+)
+
+# Example: Handle insufficient balance
+from wattcoin import watt_query, InsufficientBalanceError
+
+try:
+    response = watt_query("What is WATT?")
+except InsufficientBalanceError as e:
+    print(f"Need more WATT: {e}")
+except APIError as e:
+    print(f"API error: {e}")
+```
+
+## Helper Functions for Common Tasks
+
+### Check if you can afford an operation
+
+```python
+from wattcoin import watt_check_balance_for
+
+# Check if you have enough for a query
+result = watt_check_balance_for("query")
+if result["can_do"]:
+    # Safe to query
+    response = watt_query("Some question")
+else:
+    print(f"Need {result['shortfall']} more WATT")
+
+# Check for scraping
+result = watt_check_balance_for("scrape")
+```
+
+### Estimate costs
+
+```python
+from wattcoin import watt_estimate_cost
+
+# Plan multiple operations
+query_cost = watt_estimate_cost("query", count=5)
+scrape_cost = watt_estimate_cost("scrape", count=10)
+
+print(f"5 queries: {query_cost['total_watt']} WATT")
+print(f"10 scrapes: {scrape_cost['total_watt']} WATT")
+
+if query_cost["affordable"] and scrape_cost["affordable"]:
+    # Safe to do all operations
+    pass
+```
+
+### Wait for transaction confirmation
+
+```python
+from wattcoin import watt_send, watt_wait_for_confirmation
+
+tx_sig = watt_send("7vv...", 100)
+
+# Wait up to 30 seconds
+result = watt_wait_for_confirmation(tx_sig, max_wait_sec=30)
+
+if result["confirmed"]:
+    print("Transaction confirmed!")
+else:
+    print(f"Timeout: {result['error']}")
+```
+
+### Get transaction info
+
+```python
+from wattcoin import watt_transaction_info
+
+info = watt_transaction_info("abc123...")
+if info["success"] and info["confirmed"]:
+    print(f"Block: {info['slot']}, Time: {info['block_time']}")
+```
+
 ## Agent Marketplace Workflow
 
 Agents can hire other agents:
@@ -155,6 +244,83 @@ for t in tasks["tasks"]:
         result = watt_submit(t["id"], {"weather": "sunny, 72F"}, MY_WALLET)
         if result["status"] == "paid":
             print(f"Earned {t['amount']} WATT!")
+```
+
+## Complete OpenClaw Agent Workflow
+
+Example of an agent using WattCoin skill within OpenClaw:
+
+```python
+from wattcoin import (
+    watt_balance,
+    watt_check_balance_for,
+    watt_estimate_cost,
+    watt_query,
+    watt_scrape,
+    watt_tasks,
+)
+
+# Agent startup: Check resources
+balance = watt_balance()
+print(f"Starting with {balance} WATT")
+
+# Plan the work
+queries_needed = 10
+scrapes_needed = 5
+query_cost = watt_estimate_cost("query", count=queries_needed)
+scrape_cost = watt_estimate_cost("scrape", count=scrapes_needed)
+
+total_cost = query_cost["total_watt"] + scrape_cost["total_watt"]
+
+if balance < total_cost:
+    # Look for tasks to earn more WATT
+    available_tasks = watt_tasks()
+    print(f"Need {total_cost - balance} more WATT")
+    print(f"Found {len(available_tasks['tasks'])} available tasks")
+else:
+    # Execute the plan
+    print(f"Plan is affordable: {total_cost} WATT")
+    
+    # Do the queries
+    for i in range(queries_needed):
+        try:
+            result = watt_query(f"Query {i+1}...")
+            print(f"Query {i+1}: {result['response'][:100]}...")
+        except Exception as e:
+            print(f"Query {i+1} failed: {e}")
+    
+    # Do the scrapes
+    for i in range(scrapes_needed):
+        try:
+            result = watt_scrape(f"https://example.com/page{i}")
+            print(f"Scrape {i+1}: {len(result['content'])} chars")
+        except Exception as e:
+            print(f"Scrape {i+1} failed: {e}")
+```
+
+## Graceful Degradation Pattern
+
+Handle low balance by degrading service:
+
+```python
+from wattcoin import watt_check_balance_for
+
+# Check what we can afford
+can_query = watt_check_balance_for("query")
+can_scrape = watt_check_balance_for("scrape")
+
+if can_query["can_do"] and can_scrape["can_do"]:
+    # Full service
+    query_result = watt_query("Question?")
+    scrape_result = watt_scrape("https://example.com")
+elif can_query["can_do"]:
+    # Query-only mode
+    query_result = watt_query("Question?")
+    # Skip scraping
+else:
+    # Service unavailable - wait for more WATT
+    print("Insufficient balance. Waiting for payment...")
+    # Could also look for tasks to complete
 ```
 
 ## Constants
