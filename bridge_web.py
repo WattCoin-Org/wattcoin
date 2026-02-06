@@ -181,7 +181,18 @@ def _startup_payment_check():
     time.sleep(15)
     try:
         # Seed reputation data if missing (auto-creates contributor_reputation.json)
-        load_reputation_data()
+        data = load_reputation_data()
+        
+        # One-shot cleanup: remove test PR data from WattCoin-Org (merit system v1 testing)
+        contributors = data.get("contributors", {})
+        if "WattCoin-Org" in contributors:
+            del contributors["WattCoin-Org"]
+            import json
+            rep_file = "/app/data/contributor_reputation.json"
+            with open(rep_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            print("[STARTUP] Cleaned WattCoin-Org test data from reputation", flush=True)
+        
         process_payment_queue()
     except Exception as e:
         print(f"[STARTUP] Payment queue processing error: {e}", flush=True)
