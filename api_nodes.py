@@ -11,6 +11,7 @@ import uuid
 import requests
 import base58
 from datetime import datetime, timezone
+from api_error_codes import E
 
 nodes_bp = Blueprint('nodes', __name__)
 
@@ -264,16 +265,16 @@ def register_node():
     
     # Validation
     if not wallet:
-        return jsonify({"success": False, "error": "wallet required"}), 400
+        return jsonify({"success": False, "error": "wallet required", "error_code": E.MISSING_WALLET}), 400
     if not stake_tx:
-        return jsonify({"success": False, "error": "stake_tx required"}), 400
+        return jsonify({"success": False, "error": "stake_tx required", "error_code": E.MISSING_TX_SIGNATURE}), 400
     if not capabilities:
-        return jsonify({"success": False, "error": "capabilities required (scrape, inference)"}), 400
+        return jsonify({"success": False, "error": "capabilities required (scrape, inference)", "error_code": E.MISSING_FIELD}), 400
     
     valid_caps = ['scrape', 'inference']
     for cap in capabilities:
         if cap not in valid_caps:
-            return jsonify({"success": False, "error": f"invalid capability: {cap}"}), 400
+            return jsonify({"success": False, "error": f"invalid capability: {cap}", "error_code": E.CAPABILITY_INVALID}), 400
     
     # Check if already registered
     data = load_nodes()
@@ -285,7 +286,7 @@ def register_node():
                 "node_id": node_id
             }), 409
         if node.get("stake_tx") == stake_tx:
-            return jsonify({"success": False, "error": "stake_tx already used"}), 409
+            return jsonify({"success": False, "error": "stake_tx already used", "error_code": E.STAKE_ALREADY_USED}), 409
     
     # Verify stake
     stake_result = verify_stake(wallet, stake_tx)
@@ -332,11 +333,11 @@ def node_heartbeat():
     node_id = body.get('node_id')
     
     if not node_id:
-        return jsonify({"success": False, "error": "node_id required"}), 400
+        return jsonify({"success": False, "error": "node_id required", "error_code": E.MISSING_FIELD}), 400
     
     data = load_nodes()
     if node_id not in data.get("nodes", {}):
-        return jsonify({"success": False, "error": "node not found"}), 404
+        return jsonify({"success": False, "error": "node not found", "error_code": E.NODE_NOT_FOUND}), 404
     
     data["nodes"][node_id]["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
     save_nodes(data)
@@ -353,15 +354,15 @@ def get_node_jobs():
     node_id = request.args.get('node_id')
     
     if not node_id:
-        return jsonify({"success": False, "error": "node_id required"}), 400
+        return jsonify({"success": False, "error": "node_id required", "error_code": E.MISSING_FIELD}), 400
     
     # Verify node exists and is active
     nodes_data = load_nodes()
     node = nodes_data.get("nodes", {}).get(node_id)
     if not node:
-        return jsonify({"success": False, "error": "node not found"}), 404
+        return jsonify({"success": False, "error": "node not found", "error_code": E.NODE_NOT_FOUND}), 404
     if node.get("status") != "active":
-        return jsonify({"success": False, "error": "node not active"}), 403
+        return jsonify({"success": False, "error": "node not active", "error_code": E.NODE_INACTIVE}), 403
     
     # Get pending jobs for this node's capabilities
     jobs_data = load_jobs()
@@ -415,17 +416,17 @@ def claim_job(job_id):
     node_id = body.get('node_id')
     
     if not node_id:
-        return jsonify({"success": False, "error": "node_id required"}), 400
+        return jsonify({"success": False, "error": "node_id required", "error_code": E.MISSING_FIELD}), 400
     
     jobs_data = load_jobs()
     job = jobs_data.get("jobs", {}).get(job_id)
     
     if not job:
-        return jsonify({"success": False, "error": "job not found"}), 404
+        return jsonify({"success": False, "error": "job not found", "error_code": E.JOB_NOT_FOUND}), 404
     if job.get("status") != "pending":
-        return jsonify({"success": False, "error": f"job status: {job.get('status')}"}), 409
+        return jsonify({"success": False, "error": f"job status: {job.get('status')}", "error_code": E.JOB_ALREADY_CLAIMED}), 409
     if job.get("assigned_to") and job.get("assigned_to") != node_id:
-        return jsonify({"success": False, "error": "job assigned to another node"}), 409
+        return jsonify({"success": False, "error": "job assigned to another node", "error_code": E.JOB_WRONG_NODE}), 409
     
     # Assign job
     job["assigned_to"] = node_id
@@ -448,19 +449,19 @@ def complete_job(job_id):
     result = body.get('result')
     
     if not node_id:
-        return jsonify({"success": False, "error": "node_id required"}), 400
+        return jsonify({"success": False, "error": "node_id required", "error_code": E.MISSING_FIELD}), 400
     if result is None:
-        return jsonify({"success": False, "error": "result required"}), 400
+        return jsonify({"success": False, "error": "result required", "error_code": E.MISSING_FIELD}), 400
     
     jobs_data = load_jobs()
     job = jobs_data.get("jobs", {}).get(job_id)
     
     if not job:
-        return jsonify({"success": False, "error": "job not found"}), 404
+        return jsonify({"success": False, "error": "job not found", "error_code": E.JOB_NOT_FOUND}), 404
     if job.get("assigned_to") != node_id:
-        return jsonify({"success": False, "error": "job not assigned to this node"}), 403
+        return jsonify({"success": False, "error": "job not assigned to this node", "error_code": E.JOB_WRONG_NODE}), 403
     if job.get("status") == "completed":
-        return jsonify({"success": False, "error": "job already completed"}), 409
+        return jsonify({"success": False, "error": "job already completed", "error_code": E.JOB_ALREADY_COMPLETED}), 409
     
     # Update job
     now = datetime.now(timezone.utc).isoformat()
@@ -554,7 +555,7 @@ def get_node(node_id):
     node = data.get("nodes", {}).get(node_id)
     
     if not node:
-        return jsonify({"success": False, "error": "node not found"}), 404
+        return jsonify({"success": False, "error": "node not found", "error_code": E.NODE_NOT_FOUND}), 404
     
     return jsonify({
         "success": True,
@@ -725,7 +726,7 @@ def test_create_job():
     auth_header = request.headers.get('Authorization', '')
     
     if not admin_pass or auth_header != f'Bearer {admin_pass}':
-        return jsonify({"success": False, "error": "unauthorized"}), 401
+        return jsonify({"success": False, "error": "unauthorized", "error_code": E.UNAUTHORIZED}), 401
     
     body = request.get_json() or {}
     job_type = body.get('type', 'scrape')
