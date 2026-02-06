@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
 WattCoin Autonomous Bounty Evaluator
-Evaluates GitHub issues for bounty eligibility using Grok AI
+Evaluates GitHub issues for bounty eligibility using AI
 """
 
 import os
 import re
 from openai import OpenAI
 
-GROK_API_KEY = os.getenv("GROK_API_KEY", "")
+AI_API_KEY = os.getenv("AI_API_KEY", "")
 
-BOUNTY_EVALUATION_PROMPT = """**Grok Bounty Evaluation Prompt (v1.0)**
+BOUNTY_EVALUATION_PROMPT = """**AI Bounty Evaluation Prompt (v1.0)**
 You are the autonomous bounty gatekeeper for WattCoin — a pure utility token on Solana designed exclusively for the AI/agent economy. WattCoin's core mission is to enable real, on-chain economic loops where AI agents earn WATT by performing useful work that directly improves the WattCoin ecosystem itself: node infrastructure (WattNode), agent marketplace/tasks, skills/PR bounties, WSI swarm intelligence, security, and core utilities (scraping, inference, verification). Value accrues only through verifiable network usage and agent contributions — never speculation, hype, or off-topic features.
 
 Your role is to evaluate new GitHub issues requesting bounties. Be extremely strict: the system is easily abused by vague, low-effort, duplicate, or misaligned requests. Reject anything ambiguous, cosmetic, or not clearly high-impact. Prioritize contributions that accelerate the agent self-improvement flywheel.
@@ -73,15 +73,15 @@ Evaluate this issue strictly according to the rubric above."""
 
 def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
     """
-    Evaluate an issue for bounty eligibility using Grok.
+    Evaluate an issue for bounty eligibility using AI.
     
     Returns:
         dict with keys: decision, score, amount, reasoning, suggested_title
     """
-    if not GROK_API_KEY:
+    if not AI_API_KEY:
         return {
             "decision": "ERROR",
-            "error": "GROK_API_KEY not configured"
+            "error": "AI_API_KEY not configured"
         }
     
     # Format prompt with issue details
@@ -92,9 +92,9 @@ def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
     )
     
     try:
-        # Call Grok API
+        # Call AI API
         client = OpenAI(
-            api_key=GROK_API_KEY,
+            api_key=AI_API_KEY,
             base_url="https://api.x.ai/v1"
         )
         
@@ -105,11 +105,11 @@ def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
             max_tokens=1000
         )
         
-        grok_output = response.choices[0].message.content
+        ai_output = response.choices[0].message.content
         
-        # Parse Grok's structured output
-        result = parse_grok_bounty_response(grok_output)
-        result["raw_output"] = grok_output
+        # Parse AI structured output
+        result = parse_ai_bounty_response(ai_output)
+        result["raw_output"] = ai_output
         
         return result
         
@@ -120,8 +120,8 @@ def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
         }
 
 
-def parse_grok_bounty_response(output):
-    """Parse Grok's structured bounty evaluation response"""
+def parse_ai_bounty_response(output):
+    """Parse AI structured bounty evaluation response"""
     result = {
         "decision": "REJECT",  # Default to reject
         "score": 0,
