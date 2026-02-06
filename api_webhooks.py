@@ -328,9 +328,30 @@ def execute_auto_payment(pr_number, wallet, amount):
         print(f"[PAYMENT] Sending transaction to network...", flush=True)
         tx_resp = client.send_transaction(transaction)
         tx_signature = str(tx_resp.value)
+        print(f"[PAYMENT] Transaction sent: {tx_signature[:16]}...", flush=True)
         
-        print(f"[PAYMENT] ✅ Payment successful! TX: {tx_signature}", flush=True)
-        return tx_signature, None
+        # CRITICAL: Wait for confirmation (up to 30 seconds)
+        print(f"[PAYMENT] Waiting for confirmation...", flush=True)
+        try:
+            from solders.commitment_config import CommitmentLevel
+            from solana.rpc.commitment import Confirmed
+            
+            # Wait for transaction to be confirmed
+            confirmation = client.confirm_transaction(tx_signature, Confirmed)
+            
+            if confirmation.value:
+                print(f"[PAYMENT] ✅ Transaction confirmed on-chain! TX: {tx_signature}", flush=True)
+                return tx_signature, None
+            else:
+                error_msg = "Transaction sent but confirmation timed out"
+                print(f"[PAYMENT] ⚠️ {error_msg}", flush=True)
+                return None, error_msg
+                
+        except Exception as confirm_error:
+            error_msg = f"Transaction sent but confirmation failed: {confirm_error}"
+            print(f"[PAYMENT] ⚠️ {error_msg}", flush=True)
+            # Return signature anyway since it was sent
+            return tx_signature, str(confirm_error)
         
     except Exception as e:
         error_msg = f"Payment execution failed: {str(e)}"
