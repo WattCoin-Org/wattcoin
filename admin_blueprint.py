@@ -492,15 +492,39 @@ DASHBOARD_TEMPLATE = """
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
-                <p class="text-gray-500 text-sm">v2.1.0 | PR Reviews & Bounty Payouts</p>
+                <p class="text-gray-500 text-sm">v2.3.1 | PR Reviews & Bounty Payouts</p>
             </div>
-            <div class="flex items-center gap-4">
-                <!-- System Health Light -->
+            <div class="flex items-center gap-3">
+                <!-- System Health -->
                 <div id="health-widget" class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
                     <span id="health-dot" class="w-3 h-3 rounded-full bg-gray-600 animate-pulse"></span>
                     <div class="text-xs">
                         <span id="health-label" class="text-gray-500">Checking...</span>
                         <div id="health-detail" class="text-gray-600"></div>
+                    </div>
+                </div>
+                <!-- Webhook Status -->
+                <div id="webhook-widget" class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                    <span id="webhook-dot" class="w-3 h-3 rounded-full bg-gray-600 animate-pulse"></span>
+                    <div class="text-xs">
+                        <span id="webhook-label" class="text-gray-500">Webhooks...</span>
+                        <div id="webhook-detail" class="text-gray-600"></div>
+                    </div>
+                </div>
+                <!-- Payment Queue Badge -->
+                <div id="queue-widget" class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2" style="display:none;">
+                    <span class="w-3 h-3 rounded-full bg-yellow-400 animate-pulse"></span>
+                    <div class="text-xs">
+                        <span id="queue-label" class="text-yellow-400">⏳ Payments</span>
+                        <div id="queue-detail" class="text-yellow-500"></div>
+                    </div>
+                </div>
+                <!-- Active Nodes -->
+                <div id="nodes-widget" class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                    <span class="text-xs">🖥️</span>
+                    <div class="text-xs">
+                        <span id="nodes-label" class="text-gray-500">Nodes</span>
+                        <div id="nodes-detail" class="text-gray-600">...</div>
                     </div>
                 </div>
                 <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
@@ -624,6 +648,15 @@ DASHBOARD_TEMPLATE = """
                     const uptimeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
                     detail.textContent = 'v' + (data.version || '?') + ' · ' + uptimeStr + ' uptime';
                     detail.className = 'text-gray-500';
+                    
+                    // Active nodes/jobs
+                    const nodesLabel = document.getElementById('nodes-label');
+                    const nodesDetail = document.getElementById('nodes-detail');
+                    const jobs = data.active_jobs || 0;
+                    nodesLabel.textContent = 'Active Jobs';
+                    nodesLabel.className = jobs > 0 ? 'text-blue-400' : 'text-gray-400';
+                    nodesDetail.textContent = jobs + ' running';
+                    nodesDetail.className = jobs > 0 ? 'text-blue-300' : 'text-gray-500';
                 } else {
                     dot.className = 'w-3 h-3 rounded-full bg-yellow-400 shadow-lg shadow-yellow-400/50';
                     label.textContent = 'Degraded';
@@ -639,9 +672,55 @@ DASHBOARD_TEMPLATE = """
             }
         }
         
+        async function checkWebhooks() {
+            const dot = document.getElementById('webhook-dot');
+            const label = document.getElementById('webhook-label');
+            const wDetail = document.getElementById('webhook-detail');
+            const queueWidget = document.getElementById('queue-widget');
+            const queueLabel = document.getElementById('queue-label');
+            const queueDetail = document.getElementById('queue-detail');
+            
+            try {
+                const resp = await fetch('/webhooks/health', { timeout: 5000 });
+                const data = await resp.json();
+                
+                if (data.status === 'ok' && data.webhook_secret_configured) {
+                    dot.className = 'w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50';
+                    label.textContent = 'Webhooks OK';
+                    label.className = 'text-green-400';
+                    wDetail.textContent = 'Secret configured';
+                    wDetail.className = 'text-gray-500';
+                } else if (data.status === 'ok') {
+                    dot.className = 'w-3 h-3 rounded-full bg-yellow-400 shadow-lg shadow-yellow-400/50';
+                    label.textContent = 'Webhooks ⚠️';
+                    label.className = 'text-yellow-400';
+                    wDetail.textContent = 'No secret set';
+                    wDetail.className = 'text-yellow-500';
+                }
+                
+                // Payment queue badge
+                const pending = data.pending_payments || 0;
+                if (pending > 0) {
+                    queueWidget.style.display = 'flex';
+                    queueLabel.textContent = '⏳ ' + pending + ' Payment' + (pending > 1 ? 's' : '');
+                    queueDetail.textContent = 'Pending in queue';
+                } else {
+                    queueWidget.style.display = 'none';
+                }
+            } catch (err) {
+                dot.className = 'w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50';
+                label.textContent = 'Webhooks Down';
+                label.className = 'text-red-400';
+                wDetail.textContent = 'Check failed';
+                wDetail.className = 'text-red-500';
+            }
+        }
+        
         // Check on load, then every 30s
         checkHealth();
+        checkWebhooks();
         setInterval(checkHealth, 30000);
+        setInterval(checkWebhooks, 30000);
     </script>
 </body>
 </html>
