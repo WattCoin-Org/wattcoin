@@ -169,3 +169,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ---
 
 **Disclaimer**: WATT is a utility token with no expectation of profit. Value derives solely from network usage.
+
+---
+> **Merit System Active** — Contributors earn reputation through quality PRs. Check your tier: `/api/v1/reputation/<github-username>`
+
