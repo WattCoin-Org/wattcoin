@@ -219,6 +219,56 @@ def watt_balance_formatted(wallet_address: str) -> str:
 
 # Closes #42
 
+def get_watt_price() -> float:
+    """
+    Get the current WATT token price in USD.
+    
+    Fetches the latest price from DexScreener API using the WATT/SOL pair.
+    
+    Returns:
+        float: Current WATT price in USD (e.g., 0.000004)
+    
+    Raises:
+        APIError: If the price cannot be fetched from the API
+    
+    Example:
+        >>> price = get_watt_price()
+        >>> print(f"Current WATT price: ${price:.8f}")
+        Current WATT price: $0.00000400
+        
+        >>> # Calculate value of holdings
+        >>> balance = watt_balance()
+        >>> usd_value = balance * get_watt_price()
+        >>> print(f"Your {balance:,} WATT is worth ${usd_value:.2f}")
+    """
+    # DexScreener pair address for WATT
+    pair_address = "2ttcex2mcagk9iwu3ukcr8m5q61fop9qjdgvgasx5xtc"
+    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if not data.get("pair"):
+            raise APIError("WATT pair not found on DexScreener")
+        
+        price_usd = data["pair"].get("priceUsd")
+        if price_usd is None:
+            raise APIError("Price data not available")
+        
+        return float(price_usd)
+        
+    except requests.exceptions.Timeout:
+        raise APIError("Request to DexScreener timed out")
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to fetch WATT price: {e}")
+    except (KeyError, ValueError, TypeError) as e:
+        raise APIError(f"Invalid response from DexScreener: {e}")
+
+
+# Closes #44
+
 def watt_to_usd(watt_amount: float, price_per_watt: float) -> float:
     """Convert WATT to USD. Returns rounded value."""
     if watt_amount < 0 or price_per_watt < 0:
