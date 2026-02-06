@@ -1,8 +1,10 @@
 ## Bounty PR Submission
 
-**Closes**: #[issue_number]
+> ⚠️ **NO WALLET = NO PAYMENT** — Fill in your Solana address below or you will not be paid!
 
-**Payout Wallet**: [your_solana_wallet_address]
+**Payout Wallet**: PASTE_YOUR_SOLANA_WALLET_HERE
+
+**Closes**: #ISSUE_NUMBER
 
 ---
 
@@ -21,12 +23,11 @@
 
 ## Checklist
 
+- [ ] I included my Solana wallet address above
+- [ ] This PR references the bounty issue number
 - [ ] My code follows the existing code style
 - [ ] I have tested my changes locally
-- [ ] I have included my Solana wallet address above
-- [ ] This PR references the bounty issue number
-- [ ] I have read CONTRIBUTING.md
 
 ---
 
-**Note**: This PR will be automatically reviewed by Grok. The review score must be ≥8/10 to be eligible for payout. All payouts require manual admin approval.
+*This PR will be automatically reviewed by AI. Score must be ≥8/10 for auto-merge and payout.*
