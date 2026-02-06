@@ -19,6 +19,8 @@ WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
 
 SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
+TOKEN_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
