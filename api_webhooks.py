@@ -953,9 +953,21 @@ def process_payment_queue():
 @webhooks_bp.route('/webhooks/health', methods=['GET'])
 def webhook_health():
     """Simple health check for webhook endpoint."""
+    # Count pending payments in queue
+    pending_count = 0
+    queue_file = "/app/data/payment_queue.json"
+    try:
+        if os.path.exists(queue_file):
+            with open(queue_file, 'r') as f:
+                queue = json.load(f)
+            pending_count = len([p for p in queue if p.get("status") == "pending"])
+    except Exception:
+        pass
+    
     return jsonify({
         "status": "ok",
-        "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET)
+        "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
+        "pending_payments": pending_count
     }), 200
 
 
