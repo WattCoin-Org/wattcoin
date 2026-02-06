@@ -1204,7 +1204,7 @@ def process_payment_queue():
                     payment["status"] = "retry"
                     payment["retry_count"] = retry_count
                     payment["last_error"] = error
-                    payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** retry_count))).isoformat()
+                    payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** (retry_count - 1)))).isoformat()
                     print(f"[QUEUE] ⏳ PR #{pr_number} payment failed, retry {retry_count}/3 scheduled", flush=True)
                 else:
                     payment["status"] = "failed"
@@ -1222,7 +1222,7 @@ def process_payment_queue():
                 payment["status"] = "retry"
                 payment["retry_count"] = retry_count
                 payment["last_error"] = str(e)
-                payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** retry_count))).isoformat()
+                payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** (retry_count - 1)))).isoformat()
                 print(f"[QUEUE] ⏳ PR #{pr_number} exception, retry {retry_count}/3 scheduled", flush=True)
             else:
                 payment["status"] = "failed"
