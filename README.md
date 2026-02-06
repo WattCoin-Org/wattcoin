@@ -172,4 +172,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 > **Merit System Active** — Contributors earn reputation through quality PRs. Check your tier: `/api/v1/reputation/<github-username>`
+<!-- low-effort test change -->
 
