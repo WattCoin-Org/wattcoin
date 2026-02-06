@@ -241,20 +241,17 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
     return contributor
 
 def should_auto_merge(pr_author, review_score):
-    """Gate auto-merge based on contributor tier + review score."""
+    """Gate auto-merge based on contributor tier + review score.
+    Quality floor: ALL contributors need ≥9/10 — tier affects payouts, not quality bar."""
     rep = load_contributor_reputation(pr_author)
     tier = rep.get("tier", "new")
     
     if tier == "flagged":
         return False, tier, "Contributor is flagged — admin review required"
-    if tier == "new" and review_score < 10:
+    if tier == "new":
         return False, tier, "New contributor — admin review required"
-    if tier == "bronze" and review_score < 9:
-        return False, tier, f"Bronze tier requires score ≥ 9 (got {review_score})"
-    if tier == "silver" and review_score < 8:
-        return False, tier, f"Silver tier requires score ≥ 8 (got {review_score})"
-    if tier == "gold" and review_score < 7:
-        return False, tier, f"Gold tier requires score ≥ 7 (got {review_score})"
+    if review_score < 9:
+        return False, tier, f"Score {review_score}/10 below quality floor (requires ≥9)"
     
     return True, tier, f"Auto-merge approved ({tier} tier, score {review_score})"
 
