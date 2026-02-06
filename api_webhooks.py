@@ -1,3 +1,4 @@
+# Payment System v2.0 - On-chain memo support for bounty payments
 """
 WattCoin GitHub Webhook Handler
 POST /webhooks/github - Handle PR events with full automation
