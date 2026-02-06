@@ -333,11 +333,14 @@ def execute_auto_payment(pr_number, wallet, amount):
         # CRITICAL: Wait for confirmation (up to 30 seconds)
         print(f"[PAYMENT] Waiting for confirmation...", flush=True)
         try:
-            from solders.commitment_config import CommitmentLevel
+            from solders.signature import Signature
             from solana.rpc.commitment import Confirmed
             
+            # Convert string signature to Signature object
+            sig_obj = Signature.from_string(tx_signature)
+            
             # Wait for transaction to be confirmed
-            confirmation = client.confirm_transaction(tx_signature, Confirmed)
+            confirmation = client.confirm_transaction(sig_obj, Confirmed)
             
             if confirmation.value:
                 print(f"[PAYMENT] ✅ Transaction confirmed on-chain! TX: {tx_signature}", flush=True)
