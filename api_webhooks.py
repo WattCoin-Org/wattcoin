@@ -184,10 +184,11 @@ def auto_merge_pr(pr_number, review_score):
     except Exception as e:
         return False, f"Merge error: {e}"
 
-def execute_auto_payment(pr_number, wallet, amount):
+def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None):
     """
     Execute payment directly to contributor wallet.
     Looks up recipient's actual token account from blockchain.
+    Includes on-chain memo with proof-of-work details.
     Returns: (tx_signature, error)
     """
     import base58
@@ -196,6 +197,7 @@ def execute_auto_payment(pr_number, wallet, amount):
     from solders.message import Message
     from solders.pubkey import Pubkey
     from solders.keypair import Keypair
+    from solders.instruction import Instruction
     from spl.token.instructions import get_associated_token_address, transfer_checked, TransferCheckedParams
     from spl.token.constants import TOKEN_2022_PROGRAM_ID
     
@@ -309,14 +311,27 @@ def execute_auto_payment(pr_number, wallet, amount):
             )
         )
         
+        # Create memo instruction with proof-of-work details
+        memo_program = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
+        issue_str = f"Issue #{bounty_issue_id}" if bounty_issue_id else "Issue #N/A"
+        score_str = f"Score: {review_score}/10" if review_score else "Score: N/A"
+        memo_text = f"WattCoin Bounty | PR #{pr_number} | {issue_str} | {score_str} | {amount:,.0f} WATT | Thank you!"
+        
+        memo_ix = Instruction(
+            program_id=memo_program,
+            accounts=[],
+            data=memo_text.encode('utf-8')
+        )
+        print(f"[PAYMENT] Memo: {memo_text}", flush=True)
+        
         # Get recent blockhash
         recent_blockhash_resp = client.get_latest_blockhash()
         recent_blockhash = recent_blockhash_resp.value.blockhash
         print(f"[PAYMENT] Recent blockhash obtained", flush=True)
         
-        # Create and sign transaction
+        # Create and sign transaction (memo first, then transfer)
         message = Message.new_with_blockhash(
-            [transfer_ix],
+            [memo_ix, transfer_ix],
             payer.pubkey(),
             recent_blockhash
         )
@@ -363,7 +378,7 @@ def execute_auto_payment(pr_number, wallet, amount):
 
 
 
-def queue_payment(pr_number, wallet, amount):
+def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None):
     """
     Add payment to queue for processing after deployment.
     Prevents payments during deployment which causes container restarts.
@@ -391,6 +406,8 @@ def queue_payment(pr_number, wallet, amount):
         "pr_number": pr_number,
         "wallet": wallet,
         "amount": amount,
+        "bounty_issue_id": bounty_issue_id,
+        "review_score": review_score,
         "queued_at": datetime.utcnow().isoformat(),
         "status": "pending"
     }
@@ -666,7 +683,7 @@ An admin will review and process the payout manually if applicable.
     # Execute payment automatically
     post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
     
-    queue_payment(pr_number, wallet, amount)
+    queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"))
     tx_signature = None
     payment_error = None
     
@@ -736,6 +753,7 @@ def webhook_health():
         "status": "ok",
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET)
     }), 200
+
 
 
 
