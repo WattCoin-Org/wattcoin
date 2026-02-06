@@ -14,6 +14,9 @@ from datetime import datetime, timezone
 
 nodes_bp = Blueprint('nodes', __name__)
 
+# Track uptime
+START_TIME = time.time()
+
 # === Config ===
 NODES_FILE = os.environ.get('NODES_FILE', '/app/data/nodes.json')
 JOBS_FILE = os.environ.get('JOBS_FILE', '/app/data/node_jobs.json')
@@ -620,6 +623,19 @@ def get_network_stats():
             "total_watt": total_watt_paid
         },
         "updated_at": datetime.now(timezone.utc).isoformat()
+    })
+
+@nodes_bp.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for WattNode API monitoring"""
+    jobs_data = load_jobs()
+    active_jobs = len([j for j in jobs_data.get("jobs", {}).values() if j.get("status") == "pending"])
+
+    return jsonify({
+        "status": "ok",
+        "uptime_seconds": int(time.time() - START_TIME),
+        "active_jobs": active_jobs,
+        "version": "2.3.0"
     })
 
 # === Job Creation Helper (called by scraper/inference endpoints) ===
