@@ -340,6 +340,10 @@ def node_heartbeat():
         return jsonify({"success": False, "error": "node not found", "error_code": E.NODE_NOT_FOUND}), 404
     
     data["nodes"][node_id]["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
+    # Allow name update via heartbeat
+    new_name = body.get('name')
+    if new_name and isinstance(new_name, str) and len(new_name) <= 64:
+        data["nodes"][node_id]["name"] = new_name.strip()
     save_nodes(data)
     
     return jsonify({
