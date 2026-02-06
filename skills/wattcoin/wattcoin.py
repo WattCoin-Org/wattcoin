@@ -23,6 +23,8 @@ TOKEN_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 
 CONFIRMATION_TIMEOUT = 30
 
+MAX_RETRIES = 3
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
