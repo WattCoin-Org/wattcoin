@@ -21,8 +21,56 @@ import os
 import json
 import hmac
 import hashlib
+import time
+import uuid
+import logging
+import functools
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
+
+# =============================================================================
+# ENHANCED LOGGING CONFIGURATION
+# =============================================================================
+
+class RequestIdFilter(logging.Filter):
+    """Add request ID to log records."""
+    def filter(self, record):
+        record.request_id = getattr(g, 'request_id', 'N/A')
+        return True
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - [%(request_id)s] - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger('webhook_handler')
+logger.addFilter(RequestIdFilter())
+
+# =============================================================================
+# RETRY DECORATOR WITH EXPONENTIAL BACKOFF
+# =============================================================================
+
+def retry_with_backoff(max_retries=3, base_delay=1):
+    """Decorator to retry function calls with exponential backoff."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(f"{func.__name__} attempt {attempt + 1}/{max_retries} failed: {e}. Retrying in {delay}s...")
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"{func.__name__} all {max_retries} attempts failed: {e}")
+            raise last_exception
+        return wrapper
+    return decorator
 
 from pr_security import (
     verify_github_signature,
@@ -36,6 +84,24 @@ from pr_security import (
 )
 
 webhooks_bp = Blueprint('webhooks', __name__)
+
+# =============================================================================
+# REQUEST TRACKING MIDDLEWARE
+# =============================================================================
+
+@webhooks_bp.before_request
+def before_request():
+    """Set request ID and start timer for each request."""
+    g.request_id = str(uuid.uuid4())[:8]
+    g.start_time = time.time()
+    logger.info(f"Request started: {request.method} {request.path}")
+
+@webhooks_bp.after_request
+def after_request(response):
+    """Log response time and status."""
+    duration = time.time() - g.start_time
+    logger.info(f"Request completed: {response.status_code} in {duration:.3f}s")
+    return response
 
 # =============================================================================
 # CONFIG
@@ -60,6 +126,7 @@ def github_headers():
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
     return headers
 
+@retry_with_backoff(max_retries=3)
 def get_bounty_amount(issue_number):
     """
     Fetch bounty amount from issue title.
@@ -68,11 +135,17 @@ def get_bounty_amount(issue_number):
     import re
     import requests
     
+    start_time = time.time()
+    logger.info(f"Fetching bounty amount for issue #{issue_number}")
+    
     try:
         url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}"
         resp = requests.get(url, headers=github_headers(), timeout=10)
         
+        duration = time.time() - start_time
+        
         if resp.status_code != 200:
+            logger.warning(f"Failed to fetch issue #{issue_number}: HTTP {resp.status_code}")
             return None
         
         issue = resp.json()
@@ -81,18 +154,27 @@ def get_bounty_amount(issue_number):
         # Extract amount like [BOUNTY: 100,000 WATT]
         match = re.search(r'(\d{1,3}(?:,?\d{3})*)\s*WATT', title, re.IGNORECASE)
         if match:
-            return int(match.group(1).replace(',', ''))
+            amount = int(match.group(1).replace(',', ''))
+            logger.info(f"Found bounty amount: {amount:,} WATT for issue #{issue_number} (took {duration:.2f}s)")
+            return amount
         
+        logger.warning(f"No bounty amount found in issue #{issue_number} title: {title}")
         return None
-    except:
-        return None
+    except Exception as e:
+        logger.error(f"Error fetching bounty amount for issue #{issue_number}: {e}")
+        raise
 
+@retry_with_backoff(max_retries=3)
 def post_github_comment(issue_number, comment):
     """Post a comment on a GitHub issue/PR."""
     import requests
     
     if not GITHUB_TOKEN:
+        logger.warning("GITHUB_TOKEN not configured, skipping comment")
         return False
+    
+    start_time = time.time()
+    logger.info(f"Posting comment on issue #{issue_number}")
     
     try:
         url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}/comments"
@@ -102,14 +184,24 @@ def post_github_comment(issue_number, comment):
             json={"body": comment},
             timeout=15
         )
-        return resp.status_code in [200, 201]
-    except:
-        return False
+        
+        duration = time.time() - start_time
+        
+        if resp.status_code in [200, 201]:
+            logger.info(f"Successfully posted comment on issue #{issue_number} (took {duration:.2f}s)")
+            return True
+        else:
+            logger.error(f"Failed to post comment on issue #{issue_number}: HTTP {resp.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Exception posting comment on issue #{issue_number}: {e}")
+        raise
 
 # =============================================================================
 # AUTO-REVIEW & AUTO-MERGE
 # =============================================================================
 
+@retry_with_backoff(max_retries=3)
 def trigger_grok_review(pr_number):
     """
     Trigger Grok review for a PR.
@@ -118,17 +210,15 @@ def trigger_grok_review(pr_number):
     """
     import requests
     
+    start_time = time.time()
+    logger.info(f"Triggering Grok review for PR #{pr_number}")
+    
     try:
         # Call internal review endpoint
-        # Use module-level BASE_URL constant (no localhost default!)
         review_url = f"{BASE_URL}/api/v1/review_pr"
-        
-        # Review endpoint expects pr_url, not pr_number
         pr_url = f"https://github.com/{REPO}/pull/{pr_number}"
         
-
-        # Log the internal call attempt
-        print(f"[WEBHOOK] Calling internal review endpoint: {review_url} for PR #{pr_number}", flush=True)
+        logger.info(f"Calling review endpoint: {review_url}")
 
         resp = requests.post(
             review_url,
@@ -137,11 +227,11 @@ def trigger_grok_review(pr_number):
             timeout=60
         )
         
-
-        # Log response status
-        print(f"[WEBHOOK] Review call returned {resp.status_code}", flush=True)
+        duration = time.time() - start_time
+        logger.info(f"Review call returned {resp.status_code} in {duration:.2f}s")
+        
         if resp.status_code != 200:
-            print(f"[WEBHOOK] Error response: {resp.text[:500]}", flush=True)
+            logger.error(f"Review error response: {resp.text[:500]}")
 
         if resp.status_code == 200:
             return resp.json(), None
@@ -149,9 +239,10 @@ def trigger_grok_review(pr_number):
             return None, f"Review failed: {resp.status_code}"
     
     except Exception as e:
-        print(f"[WEBHOOK] Exception calling review: {e}", flush=True)
-        return None, f"Review error: {e}"
+        logger.error(f"Exception calling review: {e}")
+        raise
 
+@retry_with_backoff(max_retries=3)
 def auto_merge_pr(pr_number, review_score):
     """
     Auto-merge a PR if it passes threshold.
@@ -163,6 +254,9 @@ def auto_merge_pr(pr_number, review_score):
     
     if review_score < MERGE_THRESHOLD:
         return False, f"Score {review_score} < {MERGE_THRESHOLD} threshold"
+    
+    start_time = time.time()
+    logger.info(f"Attempting auto-merge for PR #{pr_number} with score {review_score}")
     
     try:
         url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
@@ -177,13 +271,18 @@ def auto_merge_pr(pr_number, review_score):
             timeout=15
         )
         
+        duration = time.time() - start_time
+        
         if resp.status_code == 200:
+            logger.info(f"Successfully auto-merged PR #{pr_number} in {duration:.2f}s")
             return True, None
         else:
+            logger.error(f"Merge failed for PR #{pr_number}: HTTP {resp.status_code}")
             return False, f"Merge failed: {resp.status_code} - {resp.text}"
     
     except Exception as e:
-        return False, f"Merge error: {e}"
+        logger.error(f"Merge error for PR #{pr_number}: {e}")
+        raise
 
 def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None):
     """
@@ -419,7 +518,7 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
     with open(queue_file, 'w') as f:
         json.dump(queue, f, indent=2)
     
-    app.logger.info(f"[QUEUE] Payment queued: PR #{pr_number}, {amount:,} WATT to {wallet[:8]}...")
+    logger.info(f"[QUEUE] Payment queued: PR #{pr_number}, {amount:,} WATT to {wallet[:8]}...")
     
     return True
 
@@ -706,11 +805,21 @@ An admin will review and process the payout manually if applicable.
 
 @webhooks_bp.route('/webhooks/health', methods=['GET'])
 def webhook_health():
-    """Simple health check for webhook endpoint."""
-    return jsonify({
+    """Enhanced health check for webhook endpoint."""
+    health_data = {
         "status": "ok",
-        "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET)
-    }), 200
+        "timestamp": datetime.utcnow().isoformat(),
+        "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
+        "github_token_configured": bool(GITHUB_TOKEN),
+        "features": {
+            "structured_logging": True,
+            "request_tracking": True,
+            "retry_logic": True,
+            "signature_validation": bool(GITHUB_WEBHOOK_SECRET)
+        }
+    }
+    logger.info("Health check requested")
+    return jsonify(health_data), 200
 
 
 
