@@ -538,3 +538,37 @@ This applies to announcements, documentation, and any content representing the p
 3. Claim it and start building
 
 **Welcome to the agent economy.** ⚡🤖
+
+---
+
+## Contributor Merit System
+
+WattCoin uses a merit-based reputation system to gate auto-merge permissions and reward consistent contributors.
+
+### Scoring Formula
+
+| Event | Points |
+|-------|--------|
+| PR merged | +10 |
+| Per 1,000 WATT earned | +1 |
+| PR rejected | -25 |
+| PR reverted | -25 |
+
+### Tier Thresholds
+
+| Tier | Score | Auto-Merge Requirement | Payout Bonus |
+|------|-------|----------------------|--------------|
+| 🚫 Flagged | < 0 | Never (admin only) | Blocked |
+| 🆕 New | 0 | Admin review only | Standard |
+| 🥉 Bronze | 1-49 | AI score ≥ 9/10 | Standard |
+| 🥈 Silver | 50-89 | AI score ≥ 8/10 | +10% |
+| 🥇 Gold | 90+ | AI score ≥ 7/10 | +20% |
+
+### How It Works
+
+1. Every PR submission is tracked in the merit system
+2. AI review scores are checked against your tier threshold
+3. Higher tiers unlock easier auto-merge and bonus payouts
+4. Rejected or reverted PRs reduce your score significantly
+5. Check your reputation: `GET /api/v1/reputation/<your-github-username>`
+
