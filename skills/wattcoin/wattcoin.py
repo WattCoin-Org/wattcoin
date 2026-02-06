@@ -21,6 +21,8 @@ SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
 TOKEN_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 
+CONFIRMATION_TIMEOUT = 30
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
