@@ -1063,6 +1063,7 @@ def process_payment_queue():
     Called on startup after deploy. Checks on-chain before resending.
     """
     import json
+    from datetime import datetime, timedelta
     
     queue_file = "/app/data/payment_queue.json"
     
@@ -1077,7 +1078,11 @@ def process_payment_queue():
         print(f"[QUEUE] Error loading queue: {e}", flush=True)
         return
     
-    pending = [p for p in queue if p.get("status") == "pending"]
+    pending = [p for p in queue if p.get("status") in ("pending", "retry")]
+    
+    # Skip retries that aren't due yet
+    now = datetime.utcnow().isoformat()
+    pending = [p for p in pending if p.get("status") == "pending" or (p.get("status") == "retry" and p.get("next_retry_at", "") <= now)]
     
     # Reconcile: record any completed payments not yet in pr_payouts.json
     completed = [p for p in queue if p.get("status") == "completed" and p.get("tx_signature")]
@@ -1194,21 +1199,36 @@ def process_payment_queue():
                 print(f"[QUEUE] ⚠️ PR #{pr_number} TX sent but unconfirmed: {error}", flush=True)
                 
             else:
-                payment["status"] = "failed"
-                payment["error"] = error
-                payment["failed_at"] = __import__('datetime').datetime.utcnow().isoformat()
-                
-                post_github_comment(pr_number,
-                    f"## ❌ Auto-Payment Failed\n\n"
+                retry_count = payment.get("retry_count", 0) + 1
+                if retry_count < 3:
+                    payment["status"] = "retry"
+                    payment["retry_count"] = retry_count
+                    payment["last_error"] = error
+                    payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** retry_count))).isoformat()
+                    print(f"[QUEUE] ⏳ PR #{pr_number} payment failed, retry {retry_count}/3 scheduled", flush=True)
+                else:
+                    payment["status"] = "failed"
+                    payment["retry_count"] = retry_count
+                    payment["error"] = error
+                    payment["failed_at"] = datetime.utcnow().isoformat()
+                    post_github_comment(pr_number, f"## ❌ Auto-Payment Failed\n\n"
                     f"Error: {error}\n\n"
-                    f"Admin will process this payment manually."
-                )
-                print(f"[QUEUE] ❌ PR #{pr_number} payment failed: {error}", flush=True)
+                    f"Retried {retry_count} times. Admin will process this payment manually." )
+                    print(f"[QUEUE] ❌ PR #{pr_number} payment failed after {retry_count} retries: {error}", flush=True)
                 
         except Exception as e:
-            payment["status"] = "failed"
-            payment["error"] = str(e)
-            print(f"[QUEUE] ❌ PR #{pr_number} exception: {e}", flush=True)
+            retry_count = payment.get("retry_count", 0) + 1
+            if retry_count < 3:
+                payment["status"] = "retry"
+                payment["retry_count"] = retry_count
+                payment["last_error"] = str(e)
+                payment["next_retry_at"] = (datetime.utcnow() + timedelta(seconds=30 * (2 ** retry_count))).isoformat()
+                print(f"[QUEUE] ⏳ PR #{pr_number} exception, retry {retry_count}/3 scheduled", flush=True)
+            else:
+                payment["status"] = "failed"
+                payment["retry_count"] = retry_count
+                payment["error"] = str(e)
+                print(f"[QUEUE] ❌ PR #{pr_number} exception after {retry_count} retries: {e}", flush=True)
     
     # Save updated queue
     try:
