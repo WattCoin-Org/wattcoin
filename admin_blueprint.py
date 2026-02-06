@@ -1,11 +1,17 @@
 """
-WattCoin Bounty Admin Dashboard - Blueprint v2.0.0
+WattCoin Bounty Admin Dashboard - Blueprint v2.1.0
 Admin routes for managing bounty PR reviews.
 
 Requires env vars:
     ADMIN_PASSWORD - Dashboard login password
     AI_REVIEW_KEY - For PR reviews
     GITHUB_TOKEN - For GitHub API calls
+
+v2.1.0 Changes:
+- System health status light on dashboard header
+- Live green/red/yellow indicator pinging /health endpoint
+- Shows version + uptime at a glance
+- Auto-refreshes every 30 seconds
 
 v2.0.0 Changes:
 - External Tasks monitoring on Agent Tasks page
@@ -486,9 +492,19 @@ DASHBOARD_TEMPLATE = """
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
-                <p class="text-gray-500 text-sm">v1.9.0 | PR Reviews & Bounty Payouts</p>
+                <p class="text-gray-500 text-sm">v2.1.0 | PR Reviews & Bounty Payouts</p>
             </div>
-            <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
+            <div class="flex items-center gap-4">
+                <!-- System Health Light -->
+                <div id="health-widget" class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                    <span id="health-dot" class="w-3 h-3 rounded-full bg-gray-600 animate-pulse"></span>
+                    <div class="text-xs">
+                        <span id="health-label" class="text-gray-500">Checking...</span>
+                        <div id="health-detail" class="text-gray-600"></div>
+                    </div>
+                </div>
+                <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
+            </div>
         </div>
         
         <!-- Nav Tabs -->
@@ -585,6 +601,48 @@ DASHBOARD_TEMPLATE = """
             </div>
         </div>
     </div>
+    
+    <script>
+        async function checkHealth() {
+            const dot = document.getElementById('health-dot');
+            const label = document.getElementById('health-label');
+            const detail = document.getElementById('health-detail');
+            
+            try {
+                const resp = await fetch('/health', { timeout: 5000 });
+                const data = await resp.json();
+                
+                if (data.status === 'ok') {
+                    dot.className = 'w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50';
+                    label.textContent = 'System Online';
+                    label.className = 'text-green-400';
+                    
+                    // Format uptime
+                    const secs = data.uptime_seconds || 0;
+                    const hrs = Math.floor(secs / 3600);
+                    const mins = Math.floor((secs % 3600) / 60);
+                    const uptimeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
+                    detail.textContent = 'v' + (data.version || '?') + ' · ' + uptimeStr + ' uptime';
+                    detail.className = 'text-gray-500';
+                } else {
+                    dot.className = 'w-3 h-3 rounded-full bg-yellow-400 shadow-lg shadow-yellow-400/50';
+                    label.textContent = 'Degraded';
+                    label.className = 'text-yellow-400';
+                    detail.textContent = data.status || 'Unknown status';
+                }
+            } catch (err) {
+                dot.className = 'w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50';
+                label.textContent = 'System Offline';
+                label.className = 'text-red-400';
+                detail.textContent = 'Health check failed';
+                detail.className = 'text-red-500';
+            }
+        }
+        
+        // Check on load, then every 30s
+        checkHealth();
+        setInterval(checkHealth, 30000);
+    </script>
 </body>
 </html>
 """
@@ -1108,7 +1166,7 @@ API_KEYS_TEMPLATE = """
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
-                <p class="text-gray-500 text-sm">v1.9.0 | Scraper API Keys - Premium Access (Skip WATT Payment)</p>
+                <p class="text-gray-500 text-sm">v2.1.0 | Scraper API Keys - Premium Access (Skip WATT Payment)</p>
             </div>
             <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
         </div>
@@ -1850,7 +1908,7 @@ SUBMISSIONS_HTML = """
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
-                <p class="text-gray-500 text-sm">v2.0.0 | Agent Task Submissions + External Tasks Monitor</p>
+                <p class="text-gray-500 text-sm">v2.1.0 | Agent Task Submissions + External Tasks Monitor</p>
             </div>
             <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
         </div>
