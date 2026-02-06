@@ -48,6 +48,143 @@ REPO = "WattCoin-Org/wattcoin"
 
 PR_REVIEWS_FILE = f"{DATA_DIR}/pr_reviews.json"
 PR_PAYOUTS_FILE = f"{DATA_DIR}/pr_payouts.json"
+REPUTATION_FILE = f"{DATA_DIR}/contributor_reputation.json"
+
+# =============================================================================
+# CONTRIBUTOR REPUTATION (Merit System V1)
+# =============================================================================
+
+def load_reputation_data():
+    """Load full reputation data from persistent file."""
+    try:
+        if os.path.exists(REPUTATION_FILE):
+            with open(REPUTATION_FILE, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"[REPUTATION] Error loading: {e}", flush=True)
+    return {"contributors": {}}
+
+def save_reputation_data(data):
+    """Save full reputation data to persistent file."""
+    try:
+        os.makedirs(os.path.dirname(REPUTATION_FILE), exist_ok=True)
+        with open(REPUTATION_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"[REPUTATION] Error saving: {e}", flush=True)
+        return False
+
+def load_contributor_reputation(github_username):
+    """Load a single contributor's reputation data."""
+    data = load_reputation_data()
+    contributors = data.get("contributors", {})
+    # Case-insensitive lookup
+    for username, info in contributors.items():
+        if username.lower() == github_username.lower():
+            return info
+    # Unknown contributor = new
+    return {
+        "github": github_username,
+        "score": 0,
+        "tier": "new",
+        "merged_prs": [],
+        "rejected_prs": [],
+        "reverted_prs": [],
+        "total_watt_earned": 0,
+        "last_updated": None
+    }
+
+def calculate_score(contributor):
+    """Calculate merit score from contributor history."""
+    merged = len(contributor.get("merged_prs", []))
+    rejected = len(contributor.get("rejected_prs", []))
+    reverted = len(contributor.get("reverted_prs", []))
+    watt = contributor.get("total_watt_earned", 0)
+    return int((merged * 10) + (watt / 1000) - (rejected * 25) - (reverted * 25))
+
+def get_merit_tier(score):
+    """Return tier string from score."""
+    if score < 0:
+        return "flagged"
+    elif score == 0:
+        return "new"
+    elif score < 50:
+        return "bronze"
+    elif score < 90:
+        return "silver"
+    else:
+        return "gold"
+
+def update_reputation(github_username, event, pr_number, watt_earned=0):
+    """
+    Update contributor reputation after an event.
+    Events: 'merge', 'reject', 'revert'
+    """
+    data = load_reputation_data()
+    contributors = data.get("contributors", {})
+    
+    # Find or create (case-insensitive)
+    found_key = None
+    for key in contributors:
+        if key.lower() == github_username.lower():
+            found_key = key
+            break
+    
+    if not found_key:
+        found_key = github_username
+        contributors[found_key] = {
+            "github": github_username,
+            "score": 0,
+            "tier": "new",
+            "merged_prs": [],
+            "rejected_prs": [],
+            "reverted_prs": [],
+            "total_watt_earned": 0,
+            "last_updated": None
+        }
+    
+    contributor = contributors[found_key]
+    
+    if event == "merge":
+        if pr_number not in contributor["merged_prs"]:
+            contributor["merged_prs"].append(pr_number)
+        contributor["total_watt_earned"] += watt_earned
+    elif event == "reject":
+        if pr_number not in contributor["rejected_prs"]:
+            contributor["rejected_prs"].append(pr_number)
+    elif event == "revert":
+        if pr_number not in contributor["reverted_prs"]:
+            contributor["reverted_prs"].append(pr_number)
+    
+    # Recalculate
+    contributor["score"] = calculate_score(contributor)
+    contributor["tier"] = get_merit_tier(contributor["score"])
+    contributor["last_updated"] = datetime.utcnow().isoformat() + "Z"
+    
+    data["contributors"] = contributors
+    save_reputation_data(data)
+    
+    print(f"[REPUTATION] Updated {github_username}: {event} PR#{pr_number} → score={contributor['score']} tier={contributor['tier']}", flush=True)
+    return contributor
+
+def should_auto_merge(pr_author, review_score):
+    """Gate auto-merge based on contributor tier + review score."""
+    rep = load_contributor_reputation(pr_author)
+    tier = rep.get("tier", "new")
+    
+    if tier == "flagged":
+        return False, tier, "Contributor is flagged — admin review required"
+    if tier == "new" and review_score < 10:
+        return False, tier, "New contributor — admin review required"
+    if tier == "bronze" and review_score < 9:
+        return False, tier, f"Bronze tier requires score ≥ 9 (got {review_score})"
+    if tier == "silver" and review_score < 8:
+        return False, tier, f"Silver tier requires score ≥ 8 (got {review_score})"
+    if tier == "gold" and review_score < 7:
+        return False, tier, f"Gold tier requires score ≥ 7 (got {review_score})"
+    
+    return True, tier, f"Auto-merge approved ({tier} tier, score {review_score})"
 
 # =============================================================================
 # GITHUB HELPERS
@@ -154,15 +291,10 @@ def trigger_ai_review(pr_number):
 
 def auto_merge_pr(pr_number, review_score):
     """
-    Auto-merge a PR if it passes threshold.
+    Auto-merge a PR. Threshold checks are handled by should_auto_merge() in the merit system.
     Returns: (success, error)
     """
     import requests
-    
-    MERGE_THRESHOLD = 8  # AI scores are 1-10, not 1-100 (8/10 = 80%)
-    
-    if review_score < MERGE_THRESHOLD:
-        return False, f"Score {review_score} < {MERGE_THRESHOLD} threshold"
     
     try:
         url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
@@ -447,34 +579,76 @@ def handle_pr_review_trigger(pr_number, action):
     score = review_data.get("score", 0)
     passed = review_data.get("pass", False)
     
-    # If review passed threshold, auto-merge
-    if passed and score >= 8:  # 8/10 = 80% threshold
-        # Attempt auto-merge
-        merged, merge_error = auto_merge_pr(pr_number, score)
+    # If review passed threshold, check merit system before merging
+    if passed and score >= 7:  # Minimum possible threshold (gold tier)
+        # Get PR author
+        import requests as req
+        try:
+            pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
+                            headers=github_headers(), timeout=10)
+            pr_author = pr_resp.json().get("user", {}).get("login", "unknown") if pr_resp.status_code == 200 else "unknown"
+        except:
+            pr_author = "unknown"
         
-        if merged:
-            post_github_comment(
-                pr_number,
-                f"✅ **Auto-merged!** AI score: {score}/10\n\n"
-                f"Payment will be processed automatically after merge completes."
-            )
+        # Merit system gate
+        can_merge, tier, reason = should_auto_merge(pr_author, score)
+        
+        if can_merge:
+            # Attempt auto-merge
+            merged, merge_error = auto_merge_pr(pr_number, score)
             
-            log_security_event("pr_auto_merged", {
-                "pr_number": pr_number,
-                "score": score
-            })
+            if merged:
+                post_github_comment(
+                    pr_number,
+                    f"✅ **Auto-merged!** AI score: {score}/10 | Contributor tier: **{tier}**\n\n"
+                    f"Payment will be processed automatically after merge completes."
+                )
+                
+                log_security_event("pr_auto_merged", {
+                    "pr_number": pr_number,
+                    "score": score,
+                    "tier": tier,
+                    "author": pr_author
+                })
+            else:
+                post_github_comment(
+                    pr_number,
+                    f"⚠️ **Review passed** (score: {score}/10) but auto-merge failed: {merge_error}\n\n"
+                    f"Please merge manually."
+                )
         else:
-            post_github_comment(
-                pr_number,
-                f"⚠️ **Review passed** (score: {score}/10) but auto-merge failed: {merge_error}\n\n"
-                f"Please merge manually."
-            )
+            # Blocked by merit system — post explanation
+            if tier == "flagged":
+                comment = (
+                    f"## 🚫 Auto-Merge Blocked\n\n"
+                    f"**AI Score**: {score}/10\n"
+                    f"**Contributor**: @{pr_author} — **Flagged** (negative reputation)\n\n"
+                    f"This contributor has a history of rejected or reverted submissions. "
+                    f"Admin review is required for all PRs from this account."
+                )
+            else:
+                comment = (
+                    f"## ⏸️ Manual Review Required\n\n"
+                    f"**AI Score**: {score}/10 ✅ PASS\n"
+                    f"**Contributor**: @{pr_author} — **{tier.title()}** tier\n\n"
+                    f"{reason}\n\n"
+                    f"An admin will review shortly."
+                )
+            
+            post_github_comment(pr_number, comment)
+            
+            log_security_event("pr_merge_blocked_merit", {
+                "pr_number": pr_number,
+                "score": score,
+                "tier": tier,
+                "author": pr_author,
+                "reason": reason
+            })
     
     return jsonify({
         "message": "Review completed",
         "score": score,
-        "passed": passed,
-        "auto_merged": passed and score >= 85
+        "passed": passed
     }), 200
 
 # =============================================================================
@@ -567,6 +741,16 @@ def github_webhook():
         return handle_pr_review_trigger(pr_number, action)
     
     # Only process merge events below this point
+    if action == "closed" and not merged:
+        # PR closed without merge — record rejection for merit system
+        pr_author = pr.get("user", {}).get("login", "unknown")
+        update_reputation(pr_author, "reject", pr_number)
+        log_security_event("pr_rejected", {
+            "pr_number": pr_number,
+            "author": pr_author
+        })
+        return jsonify({"message": f"PR #{pr_number} closed without merge — rejection recorded"}), 200
+    
     if action != "closed" or not merged:
         return jsonify({"message": f"Ignoring action: {action}, merged: {merged}"}), 200
     
@@ -687,6 +871,9 @@ An admin will review and process the payout manually if applicable.
     post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
     
     queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
+    
+    # Update contributor reputation on merge
+    update_reputation(pr_author, "merge", pr_number, watt_earned=amount)
     
     # Payment queued - comment will be posted by process_payment_queue() after confirmation
     log_security_event("payment_queued", {
@@ -848,6 +1035,20 @@ def process_payment_queue():
         amount = payment["amount"]
         bounty_issue_id = payment.get("bounty_issue_id")
         review_score = payment.get("review_score")
+        
+        # Apply tier bonus
+        author = payment.get("author")
+        if author:
+            rep = load_contributor_reputation(author)
+            tier = rep.get("tier", "new")
+            if tier == "silver":
+                bonus = int(amount * 0.1)
+                amount += bonus
+                print(f"[QUEUE] Silver tier bonus: +{bonus:,} WATT for {author}", flush=True)
+            elif tier == "gold":
+                bonus = int(amount * 0.2)
+                amount += bonus
+                print(f"[QUEUE] Gold tier bonus: +{bonus:,} WATT for {author}", flush=True)
         
         print(f"[QUEUE] Processing PR #{pr_number}: {amount:,} WATT to {wallet[:8]}...", flush=True)
         

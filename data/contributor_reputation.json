@@ -1,0 +1,44 @@
+{
+  "contributors": {
+    "divol89": {
+      "github": "divol89",
+      "score": -50,
+      "tier": "flagged",
+      "merged_prs": [79],
+      "rejected_prs": [72],
+      "reverted_prs": [79],
+      "total_watt_earned": 0,
+      "last_updated": "2026-02-06T13:20:00Z"
+    },
+    "SudarshanSuryaprakash": {
+      "github": "SudarshanSuryaprakash",
+      "score": 25,
+      "tier": "bronze",
+      "merged_prs": [70],
+      "rejected_prs": [],
+      "reverted_prs": [],
+      "total_watt_earned": 15000,
+      "last_updated": "2026-02-05T04:10:00Z"
+    },
+    "ohmygod20260203": {
+      "github": "ohmygod20260203",
+      "score": 10,
+      "tier": "bronze",
+      "merged_prs": [75],
+      "rejected_prs": [],
+      "reverted_prs": [],
+      "total_watt_earned": 0,
+      "last_updated": "2026-02-06T00:00:00Z"
+    },
+    "Rajkoli145": {
+      "github": "Rajkoli145",
+      "score": 0,
+      "tier": "new",
+      "merged_prs": [],
+      "rejected_prs": [],
+      "reverted_prs": [],
+      "total_watt_earned": 0,
+      "last_updated": "2026-02-06T00:00:00Z"
+    }
+  }
+}

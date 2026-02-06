@@ -1,3 +1,42 @@
+## [February 6, 2026 - v3.0.0] - Merit System V1 — Contributor Reputation Gating
+
+### Merit System (NEW)
+- **api_webhooks.py**: Contributor reputation scoring gates auto-merge decisions
+  - `should_auto_merge()` — tier-aware merge gating replaces hardcoded threshold
+  - `update_reputation()` — tracks merge/reject/revert events per contributor
+  - `load_contributor_reputation()` / `save_reputation_data()` — persistent `/app/data/contributor_reputation.json`
+  - `calculate_score()` / `get_merit_tier()` — scoring formula and tier calculation
+  - Scoring: +10/merge, +1/1K WATT, -25/reject, -25/revert
+  - Tiers: Flagged (<0), New (0), Bronze (1-49), Silver (50-89), Gold (90+)
+  - Auto-merge thresholds: Gold ≥7, Silver ≥8, Bronze ≥9, New/Flagged = admin only
+
+### Webhook Handler Updates
+- **api_webhooks.py**: PR close-without-merge now records rejection in merit system
+- **api_webhooks.py**: PR merge now updates contributor reputation + WATT earned
+- **api_webhooks.py**: Payment queue applies tier bonuses (Silver +10%, Gold +20%)
+- **api_webhooks.py**: Removed hardcoded `MERGE_THRESHOLD = 8` from `auto_merge_pr()`
+- **api_webhooks.py**: Fixed stale `score >= 85` reference in review response
+
+### Reputation API Rewrite
+- **api_reputation.py**: v3.0.0 — rewired to use `contributor_reputation.json` merit data
+  - Combined view: merit system contributors + historical pre-automation data
+  - Exposes tier info, scoring formula, and tier breakdown in stats
+  - Preserved backward-compatible endpoint URLs
+
+### Seed Data
+- **data/contributor_reputation.json** (NEW): Backfilled from known history
+  - divol89: flagged (score -50) — PR #72 rejected, #79 reverted
+  - SudarshanSuryaprakash: bronze (score 25)
+  - ohmygod20260203: bronze (score 10) — pending payment
+  - Rajkoli145: new (score 0) — claimed #74
+
+### Comment Templates
+- Flagged contributors: 🚫 block message with history explanation
+- New contributors: ⏸️ manual review required message
+- Approved: ✅ auto-merged with tier display
+
+---
+
 ## [February 6, 2026 - v2.3.1] - Dashboard Health Expansion + Rate Limit Revert
 
 ### Dashboard Health Widgets

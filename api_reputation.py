@@ -1,9 +1,10 @@
 """
-WattCoin Reputation API - Contributor reputation and leaderboard
-GET /api/v1/reputation - List all contributors
-GET /api/v1/reputation/<github_username> - Single contributor
+WattCoin Reputation API - Contributor merit system and leaderboard
+GET /api/v1/reputation - List all contributors with merit scores
+GET /api/v1/reputation/<github_username> - Single contributor details
+GET /api/v1/reputation/stats - Overall reputation system stats
 
-v2.0.0: Now pulls from actual dashboard bounty payouts instead of static seed data
+v3.0.0: Merit System V1 — tier-gated auto-merge, scoring from merge/reject/revert history
 """
 
 import os
@@ -13,11 +14,10 @@ from datetime import datetime
 
 reputation_bp = Blueprint('reputation', __name__)
 
-# Config - use actual dashboard data
-BOUNTY_DATA_FILE = "/app/data/bounty_reviews.json"
-HISTORICAL_CONTRIBUTORS_FILE = "/app/data/reputation_historical.json"
+# Config
+REPUTATION_FILE = "/app/data/contributor_reputation.json"
 
-# Historical contributors (paid before dashboard system)
+# Historical contributors (paid before automated system, preserved for reference)
 HISTORICAL_DATA = {
     "aybanda": {
         "github": "aybanda",
@@ -33,8 +33,7 @@ HISTORICAL_DATA = {
                 "completed_at": "2026-01-31",
                 "tx_signature": None
             }
-        ],
-        "tier": "silver"
+        ]
     },
     "njg7194": {
         "github": "njg7194",
@@ -57,8 +56,7 @@ HISTORICAL_DATA = {
                 "completed_at": "2026-02-02",
                 "tx_signature": "2ZeejLNFLvpbE3gazwTsASmBWXutqvzYtceBX1np1N8hHruhxnnjzRLokEm1vpQareLmPtrUHhF4KZSq9L1jpuqa"
             }
-        ],
-        "tier": "bronze"
+        ]
     },
     "SudarshanSuryaprakash": {
         "github": "SudarshanSuryaprakash",
@@ -88,8 +86,7 @@ HISTORICAL_DATA = {
                 "completed_at": "2026-02-04",
                 "tx_signature": "3vWx..."
             }
-        ],
-        "tier": "silver"
+        ]
     }
 }
 
@@ -97,99 +94,77 @@ HISTORICAL_DATA = {
 # DATA LOADING
 # =============================================================================
 
-def load_bounty_data():
-    """Load actual bounty payout data from dashboard."""
+def load_reputation_data():
+    """Load merit system reputation data."""
     try:
-        with open(BOUNTY_DATA_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"reviews": {}, "payouts": [], "history": []}
+        if os.path.exists(REPUTATION_FILE):
+            with open(REPUTATION_FILE, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, Exception):
+        pass
+    return {"contributors": {}}
 
-def build_contributor_stats():
-    """Build contributor reputation from historical data + actual paid bounties."""
-    # Start with historical contributors
-    contributors = {}
-    for username, data in HISTORICAL_DATA.items():
-        contributors[username] = dict(data)  # Copy historical data
+def build_contributor_list():
+    """Build combined list: merit system contributors + historical data."""
+    rep_data = load_reputation_data()
+    merit_contributors = rep_data.get("contributors", {})
     
-    # Load and merge dashboard data
-    data = load_bounty_data()
-    payouts = data.get("payouts", [])
+    result = []
     
-    # Only count paid bounties
-    paid_bounties = [p for p in payouts if p.get("status") == "paid"]
-    
-    # Merge dashboard payouts with historical data
-    for payout in paid_bounties:
-        author = payout.get("author")
-        if not author:
-            continue
+    # Merit system contributors (primary)
+    for username, data in merit_contributors.items():
+        entry = {
+            "github": username,
+            "score": data.get("score", 0),
+            "tier": data.get("tier", "new"),
+            "merged_prs": data.get("merged_prs", []),
+            "rejected_prs": data.get("rejected_prs", []),
+            "reverted_prs": data.get("reverted_prs", []),
+            "total_watt_earned": data.get("total_watt_earned", 0),
+            "last_updated": data.get("last_updated"),
+            "source": "merit_system"
+        }
         
-        if author not in contributors:
-            # New contributor (not in historical data)
-            contributors[author] = {
-                "github": author,
-                "wallet": payout.get("wallet"),
-                "bounties_completed": 0,
-                "total_watt_earned": 0,
-                "first_contribution": payout.get("paid_at"),
-                "bounties": [],
-                "tier": "none"
-            }
+        # Merge historical data if this user also has legacy records
+        if username in HISTORICAL_DATA:
+            hist = HISTORICAL_DATA[username]
+            entry["total_watt_earned"] += hist.get("total_watt_earned", 0)
+            entry["historical_bounties"] = hist.get("bounties", [])
         
-        # Add bounty to contributor
-        contributors[author]["bounties_completed"] += 1
-        contributors[author]["total_watt_earned"] += payout.get("amount", 0)
-        contributors[author]["bounties"].append({
-            "pr_number": payout.get("pr_number"),
-            "amount": payout.get("amount", 0),
-            "completed_at": payout.get("paid_at"),
-            "tx_signature": payout.get("tx_sig")
-        })
-        
-        # Update wallet if we didn't have it
-        if not contributors[author].get("wallet") and payout.get("wallet"):
-            contributors[author]["wallet"] = payout.get("wallet")
-        
-        # Update first contribution if earlier
-        if payout.get("paid_at"):
-            if not contributors[author]["first_contribution"] or \
-               payout.get("paid_at") < contributors[author]["first_contribution"]:
-                contributors[author]["first_contribution"] = payout.get("paid_at")
+        result.append(entry)
     
-    # Calculate tiers for each contributor
-    for contributor in contributors.values():
-        contributor["tier"] = get_tier(
-            contributor["bounties_completed"],
-            contributor["total_watt_earned"]
-        )
+    # Add historical-only contributors (not yet in merit system)
+    for username, hist in HISTORICAL_DATA.items():
+        if username.lower() not in {k.lower() for k in merit_contributors}:
+            result.append({
+                "github": username,
+                "score": 0,
+                "tier": "bronze",  # Historical contributors get bronze by default
+                "merged_prs": [b["pr_number"] for b in hist.get("bounties", [])],
+                "rejected_prs": [],
+                "reverted_prs": [],
+                "total_watt_earned": hist.get("total_watt_earned", 0),
+                "last_updated": hist.get("first_contribution"),
+                "historical_bounties": hist.get("bounties", []),
+                "source": "historical"
+            })
     
-    # Calculate overall stats (including historical)
-    total_bounties = sum(c["bounties_completed"] for c in contributors.values())
-    total_watt = sum(c["total_watt_earned"] for c in contributors.values())
+    # Sort by score descending, then by WATT earned
+    result.sort(key=lambda x: (x["score"], x["total_watt_earned"]), reverse=True)
     
-    stats = {
-        "total_contributors": len(contributors),
-        "total_bounties_paid": total_bounties,
-        "total_watt_distributed": total_watt,
-        "last_updated": datetime.now().isoformat() + "Z"
-    }
-    
-    return contributors, stats
+    return result
 
 # =============================================================================
-# TIER LOGIC
+# TIER INFO
 # =============================================================================
 
-def get_tier(bounties_completed, total_watt):
-    """Calculate contributor tier based on activity."""
-    if bounties_completed >= 5 and total_watt >= 250000:
-        return "gold"
-    elif bounties_completed >= 3 or total_watt >= 100000:
-        return "silver"
-    elif bounties_completed >= 1:
-        return "bronze"
-    return "none"
+TIER_INFO = {
+    "gold":    {"emoji": "🥇", "min_score": 90,  "auto_merge_min": 7, "payout_bonus": "+20%"},
+    "silver":  {"emoji": "🥈", "min_score": 50,  "auto_merge_min": 8, "payout_bonus": "+10%"},
+    "bronze":  {"emoji": "🥉", "min_score": 1,   "auto_merge_min": 9, "payout_bonus": "standard"},
+    "new":     {"emoji": "🆕", "min_score": 0,   "auto_merge_min": None, "payout_bonus": "standard"},
+    "flagged": {"emoji": "🚫", "min_score": None, "auto_merge_min": None, "payout_bonus": "blocked"}
+}
 
 # =============================================================================
 # ENDPOINTS
@@ -197,35 +172,41 @@ def get_tier(bounties_completed, total_watt):
 
 @reputation_bp.route('/api/v1/reputation', methods=['GET'])
 def list_reputation():
-    """List all contributors and their reputation."""
-    contributors, stats = build_contributor_stats()
+    """List all contributors and their merit reputation."""
+    contributors = build_contributor_list()
     
-    # Build list sorted by total_watt_earned (descending)
-    contributor_list = list(contributors.values())
-    contributor_list.sort(key=lambda x: x.get("total_watt_earned", 0), reverse=True)
+    total_watt = sum(c["total_watt_earned"] for c in contributors)
+    total_merged = sum(len(c["merged_prs"]) for c in contributors)
     
     return jsonify({
         "success": True,
-        "total": len(contributor_list),
-        "contributors": contributor_list,
-        "stats": stats,
-        "tiers": {
-            "gold": {"emoji": "🥇", "min_bounties": 5, "min_watt": 250000},
-            "silver": {"emoji": "🥈", "min_bounties": 3, "min_watt": 100000},
-            "bronze": {"emoji": "🥉", "min_bounties": 1, "min_watt": 0}
+        "total": len(contributors),
+        "contributors": contributors,
+        "stats": {
+            "total_contributors": len(contributors),
+            "total_merged_prs": total_merged,
+            "total_watt_distributed": total_watt,
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        },
+        "tiers": TIER_INFO,
+        "scoring": {
+            "merged_pr": "+10 points",
+            "per_1000_watt": "+1 point",
+            "rejected_pr": "-25 points",
+            "reverted_pr": "-25 points"
         }
     })
 
 @reputation_bp.route('/api/v1/reputation/<github_username>', methods=['GET'])
 def get_contributor(github_username):
-    """Get single contributor's reputation."""
-    contributors, _ = build_contributor_stats()
+    """Get single contributor's merit reputation."""
+    contributors = build_contributor_list()
     
     # Case-insensitive lookup
     contributor = None
-    for username, info in contributors.items():
-        if username.lower() == github_username.lower():
-            contributor = info
+    for c in contributors:
+        if c["github"].lower() == github_username.lower():
+            contributor = c
             break
     
     if not contributor:
@@ -242,11 +223,21 @@ def get_contributor(github_username):
 
 @reputation_bp.route('/api/v1/reputation/stats', methods=['GET'])
 def get_stats():
-    """Get overall reputation system stats."""
-    _, stats = build_contributor_stats()
+    """Get overall merit system stats."""
+    contributors = build_contributor_list()
+    
+    tier_counts = {}
+    for c in contributors:
+        tier = c.get("tier", "new")
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
     
     return jsonify({
         "success": True,
-        "stats": stats
+        "stats": {
+            "total_contributors": len(contributors),
+            "total_watt_distributed": sum(c["total_watt_earned"] for c in contributors),
+            "total_merged_prs": sum(len(c["merged_prs"]) for c in contributors),
+            "tier_breakdown": tier_counts,
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        }
     })
-
