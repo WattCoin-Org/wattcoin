@@ -243,7 +243,7 @@ def list_bounties():
 # --- Config ---
 MAX_AUTO_APPROVE_WATT = 20000       # Auto-create up to this amount
 DAILY_CAP_WATT = 100000             # Total WATT auto-created per day
-RATE_LIMIT_PER_HOUR = 5             # Max proposals per agent per hour
+RATE_LIMIT_PER_HOUR = 3             # Max proposals per agent per hour
 RATE_LIMIT_PER_DAY = 10             # Max proposals per agent per day
 PROPOSALS_FILE = "/app/data/bounty_proposals.json"
 API_KEYS_FILE = "/app/data/api_keys.json"
