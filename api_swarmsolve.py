@@ -105,9 +105,9 @@ def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
         to_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
     )
 
-    # Build transfer instruction
+    # Build TransferChecked instruction (Token-2022 requires mint in accounts)
     amount_raw = amount * (10 ** WATT_DECIMALS)
-    data = bytes([3]) + struct.pack("<Q", amount_raw)
+    data = bytes([12]) + struct.pack("<Q", amount_raw) + bytes([WATT_DECIMALS])
 
     transfer_ix = Instruction(
         program_id=TOKEN_2022_PROGRAM_ID,
