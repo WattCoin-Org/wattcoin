@@ -53,6 +53,10 @@ VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'compute', 'othe
 VALID_WORKER_TYPES = ['agent', 'node', 'any']
 VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated']
 
+# === Leaderboard Cache ===
+LEADERBOARD_CACHE_TTL_SECONDS = 5 * 60
+_leaderboard_cache: dict[tuple[str, int], tuple[float, dict]] = {}
+
 
 # === Data Layer ===
 
@@ -1021,3 +1025,106 @@ def task_stats():
             "valid_types": VALID_TYPES
         }
     })
+
+
+@tasks_bp.route('/api/v1/tasks/leaderboard', methods=['GET'])
+def task_leaderboard():
+    """
+    Leaderboard of top task marketplace agents.
+
+    Query params:
+      - sort_by: earned|completed|avg_score (default: earned)
+      - limit: int (default: 20)
+    """
+    sort_by = (request.args.get("sort_by") or "earned").strip().lower()
+    if sort_by not in ("earned", "completed", "avg_score"):
+        return jsonify({"success": False, "error": "invalid sort_by (earned|completed|avg_score)"}), 400
+
+    try:
+        limit = int(request.args.get("limit") or 20)
+    except ValueError:
+        return jsonify({"success": False, "error": "invalid limit"}), 400
+
+    if limit < 1:
+        return jsonify({"success": False, "error": "limit must be >= 1"}), 400
+    if limit > 100:
+        limit = 100
+
+    key = (sort_by, limit)
+    now = time.time()
+    cached = _leaderboard_cache.get(key)
+    if cached is not None:
+        ts, payload = cached
+        if now - ts < LEADERBOARD_CACHE_TTL_SECONDS:
+            return jsonify(payload)
+
+    data = load_tasks()
+    tasks = data.get("tasks", {}) or {}
+
+    def _short_wallet(w: str) -> str:
+        w = (w or "").strip()
+        return (w[:8] + "...") if w else ""
+
+    stats_by_wallet: dict[str, dict] = {}
+
+    for task in tasks.values():
+        if not isinstance(task, dict):
+            continue
+        if task.get("status") != "verified":
+            continue
+
+        claimer_wallet = (task.get("claimer_wallet") or "").strip()
+        if claimer_wallet:
+            s = stats_by_wallet.setdefault(
+                claimer_wallet,
+                {"wallet": claimer_wallet, "agent_name": None, "tasks_completed": 0, "total_earned": 0, "score_sum": 0.0, "score_count": 0},
+            )
+            s["tasks_completed"] += 1
+            s["total_earned"] += int(task.get("worker_payout") or 0)
+            name = (task.get("claimer_name") or "").strip()
+            if name and name.lower() != "anonymous":
+                s["agent_name"] = name
+            v = task.get("verification") or {}
+            score = v.get("score") if isinstance(v, dict) else None
+            if isinstance(score, (int, float)) and score >= 0:
+                s["score_sum"] += float(score)
+                s["score_count"] += 1
+
+        # Coordinator earns a fee when a delegated parent task is verified.
+        coordinator_wallet = (task.get("coordinator_wallet") or "").strip()
+        coordinator_fee = int(task.get("coordinator_fee") or 0)
+        if coordinator_wallet and coordinator_fee > 0:
+            s = stats_by_wallet.setdefault(
+                coordinator_wallet,
+                {"wallet": coordinator_wallet, "agent_name": None, "tasks_completed": 0, "total_earned": 0, "score_sum": 0.0, "score_count": 0},
+            )
+            s["total_earned"] += coordinator_fee
+
+    leaderboard = []
+    for s in stats_by_wallet.values():
+        score_count = int(s.get("score_count") or 0)
+        avg = (float(s.get("score_sum") or 0.0) / score_count) if score_count > 0 else 0.0
+        leaderboard.append(
+            {
+                "wallet": _short_wallet(s["wallet"]),
+                "agent_name": s.get("agent_name") or "anonymous",
+                "tasks_completed": int(s.get("tasks_completed") or 0),
+                "total_earned": int(s.get("total_earned") or 0),
+                "avg_score": round(avg, 1),
+            }
+        )
+
+    if sort_by == "earned":
+        leaderboard.sort(key=lambda r: (r["total_earned"], r["tasks_completed"], r["avg_score"]), reverse=True)
+    elif sort_by == "completed":
+        leaderboard.sort(key=lambda r: (r["tasks_completed"], r["total_earned"], r["avg_score"]), reverse=True)
+    else:  # avg_score
+        leaderboard.sort(key=lambda r: (r["avg_score"], r["total_earned"], r["tasks_completed"]), reverse=True)
+
+    leaderboard = leaderboard[:limit]
+    for i, row in enumerate(leaderboard, start=1):
+        row["rank"] = i
+
+    payload = {"success": True, "leaderboard": leaderboard}
+    _leaderboard_cache[key] = (now, payload)
+    return jsonify(payload)
