@@ -23,6 +23,7 @@ import os
 import json
 import uuid
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 
@@ -51,7 +52,7 @@ MIN_SUBTASK_REWARD = 100  # Min reward per subtask
 DELEGATION_FEE_PCT = 5    # 5% coordinator fee to delegating agent
 VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'compute', 'other']
 VALID_WORKER_TYPES = ['agent', 'node', 'any']
-VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated']
+VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated', 'pending_review']
 
 
 # === Data Layer ===
@@ -143,12 +144,31 @@ def ai_verify_submission(task, submission):
     Use AI to verify task completion quality.
     Returns (score, feedback) tuple.
     """
+    def _is_retryable_error(err: Exception) -> bool:
+        status = getattr(err, "status_code", None)
+        if isinstance(status, int) and status >= 500:
+            return True
+
+        # OpenAI client raises a family of API/network errors; we keep this broad.
+        if isinstance(err, (TimeoutError, ConnectionError, OSError)):
+            return True
+
+        msg = str(err).lower()
+        if "timeout" in msg or "timed out" in msg or "connection" in msg:
+            return True
+
+        return False
+
     try:
         from openai import OpenAI
         ai_key = os.getenv('AI_API_KEY')
         if not ai_key:
             logger.error("AI_API_KEY not set — cannot verify")
-            return 0, "AI verification unavailable"
+            return -1, "AI verification unavailable (missing AI_API_KEY)"
+
+        timeout_s = int(os.getenv("AI_VERIFY_TIMEOUT_SECONDS", "30"))
+        max_attempts = int(os.getenv("AI_VERIFY_MAX_ATTEMPTS", "3"))
+        backoff_s = [1, 2, 4]
 
         client = OpenAI(api_key=ai_key, base_url="https://api.x.ai/v1")
 
@@ -174,31 +194,60 @@ Respond in this exact format:
 SCORE: <1-10>
 FEEDBACK: <brief explanation>"""
 
-        response = client.chat.completions.create(
-            model="grok-3",
-            messages=[{"role": "user", "content": verify_prompt}],
-            max_tokens=500
-        )
+        last_err: Exception | None = None
+        response = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = client.chat.completions.create(
+                    model="grok-3",
+                    messages=[{"role": "user", "content": verify_prompt}],
+                    max_tokens=500,
+                    timeout=timeout_s,
+                )
+                break
+            except Exception as e:
+                last_err = e
+                if attempt >= max_attempts or not _is_retryable_error(e):
+                    raise
+                sleep_s = backoff_s[min(attempt - 1, len(backoff_s) - 1)]
+                logger.warning(
+                    "AI verification retrying (attempt %d/%d, sleep=%ss): %s",
+                    attempt,
+                    max_attempts,
+                    sleep_s,
+                    str(e),
+                )
+                time.sleep(sleep_s)
+
+        if response is None:
+            raise last_err or RuntimeError("AI verification failed without response")
 
         content = response.choices[0].message.content
         
         # Parse score
         score = 0
         feedback = content
+        found_score = False
         for line in content.split('\n'):
             if line.strip().upper().startswith('SCORE:'):
                 try:
                     score = int(line.split(':')[1].strip().split('/')[0].strip())
+                    found_score = True
                 except (ValueError, IndexError):
                     score = 0
             elif line.strip().upper().startswith('FEEDBACK:'):
                 feedback = line.split(':', 1)[1].strip()
 
+        if not found_score:
+            # Malformed model response; avoid re-opening the task and losing the submission.
+            return -1, f"Verification error (pending manual review): malformed AI response: {content[:500]}"
+
         return min(max(score, 0), 10), feedback
 
     except Exception as e:
         logger.error("AI verification failed: %s", str(e))
-        return 0, f"Verification error: {str(e)}"
+        # Special sentinel score indicates the task should be put into pending_review.
+        return -1, f"Verification error (pending manual review): {str(e)}"
 
 
 # === Expiration Check ===
@@ -561,7 +610,8 @@ def verify_task(task_id):
     if task.get("status") != "submitted":
         return jsonify({"success": False, "error": f"task is {task.get('status')}, not submitted"}), 409
 
-    # Run AI verification
+    # Run AI verification (with retries). If AI is unavailable, mark as pending_review
+    # so we don't accidentally re-open/lose the submission.
     submission = task.get("submission", {})
     score, feedback = ai_verify_submission(task, submission)
 
@@ -573,6 +623,18 @@ def verify_task(task_id):
         "verified_at": now
     }
     task["verified_at"] = now
+
+    if score < 0:
+        task["status"] = "pending_review"
+        save_tasks(data)
+        logger.warning("task pending_review | id=%s feedback=%s", task_id, feedback)
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "status": "pending_review",
+            "feedback": feedback,
+            "message": "AI verification unavailable; task marked pending_review for manual processing."
+        }), 202
 
     if score >= VERIFY_THRESHOLD:
         # === PASSED — Pay the worker ===
