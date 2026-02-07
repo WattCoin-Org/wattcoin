@@ -129,6 +129,7 @@ from api_pr_review import pr_review_bp
 from api_webhooks import webhooks_bp, process_payment_queue, load_reputation_data
 from api_wsi import wsi_bp
 from data_backup import backup_bp
+from api_health import health_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(bounties_bp)
 app.register_blueprint(llm_bp)
@@ -139,6 +140,7 @@ app.register_blueprint(pr_review_bp)
 app.register_blueprint(webhooks_bp)
 app.register_blueprint(wsi_bp)
 app.register_blueprint(backup_bp)
+app.register_blueprint(health_bp)
 
 # Apply endpoint-specific rate limits after blueprint registration
 limiter.limit("10 per minute")(llm_bp)  # LLM queries are expensive - strict limit
@@ -149,6 +151,7 @@ limiter.limit("100 per minute")(tasks_bp)  # Task queries - moderate limit
 limiter.limit("100 per minute")(nodes_bp)  # Node queries - moderate limit
 limiter.limit("100 per minute")(pr_review_bp)  # PR review queries - moderate limit
 limiter.limit("200 per minute")(wsi_bp)  # WSI interface - higher limit for UI
+limiter.limit("100 per minute")(health_bp) # Health check - moderate limit
 # Admin blueprint - no additional limit (inherits global defaults)
 
 logger.info("Blueprint-specific rate limits applied successfully")
