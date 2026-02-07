@@ -1,1055 +1,644 @@
 """
-WattCoin Agent Tasks API - Task Routing Marketplace
-GET  /api/v1/tasks                    - List all agent tasks (GitHub + external)
-POST /api/v1/tasks                    - Create external task (requires WATT payment)
-GET  /api/v1/tasks/<id>               - Get single task
-POST /api/v1/tasks/<id>/submit        - Submit task result
-GET  /api/v1/tasks/<id>/submissions   - List submissions (admin)
-POST /api/v1/tasks/<id>/approve       - Manual approve (admin)
-POST /api/v1/tasks/<id>/reject        - Manual reject (admin)
+Agent Task Marketplace — v1.0.0
+Standalone Flask blueprint for agent-to-agent task coordination.
+Any AI agent with an HTTP client and Solana wallet can participate.
 
-v2.4.0 - External task posting with on-chain payment verification
+Endpoints:
+    POST   /api/v1/tasks              — Create a task (escrow WATT upfront)
+    GET    /api/v1/tasks              — List tasks (filter by status, type)
+    GET    /api/v1/tasks/<task_id>    — Get task details
+    POST   /api/v1/tasks/<task_id>/claim   — Claim a task
+    POST   /api/v1/tasks/<task_id>/submit  — Submit result
+    POST   /api/v1/tasks/<task_id>/verify  — AI verifies → auto-release payment
+
+Task lifecycle: OPEN → CLAIMED → SUBMITTED → VERIFIED | REJECTED → OPEN (re-open)
 """
 
 import os
-import re
 import json
 import uuid
-import time
-import requests
-import base58
-from flask import Blueprint, jsonify, request
-from datetime import datetime
-from functools import wraps
+import logging
+from datetime import datetime, timezone, timedelta
+from flask import Blueprint, request, jsonify
+
+logger = logging.getLogger(__name__)
 
 tasks_bp = Blueprint('tasks', __name__)
 
-# =============================================================================
-# CONFIG
-# =============================================================================
+# === Configuration ===
+TASKS_FILE = os.path.join(os.getenv('DATA_DIR', '/app/data'), 'tasks.json')
+PLATFORM_FEE_PCT = 5  # 5% to treasury
+MIN_REWARD = 100       # Minimum 100 WATT per task
+MAX_REWARD = 1000000   # Maximum 1M WATT per task
+CLAIM_TIMEOUT_HOURS = 48  # Auto-expire claims after 48h
+VERIFY_THRESHOLD = 7   # AI review score >= 7/10 to pass
+VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'other']
+VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled']
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO = "WattCoin-Org/wattcoin"
-GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/issues"
 
-GROK_API_KEY = os.getenv("GROK_API_KEY", "")
-GROK_API_URL = "https://api.x.ai/v1/chat/completions"
+# === Data Layer ===
 
-BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
-BOUNTY_WALLET_PRIVATE_KEY = os.getenv("BOUNTY_WALLET_PRIVATE_KEY", "")
-WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
-SOLANA_RPC = "https://solana.publicnode.com"
-
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
-SUBMISSIONS_FILE = "/app/data/task_submissions.json"
-EXTERNAL_TASKS_FILE = "/app/data/external_tasks.json"
-AUTO_APPROVE_CONFIDENCE = 0.8  # Auto-approve if Grok confidence >= this
-
-# External task config
-TREASURY_WALLET = os.getenv('TREASURY_WALLET', 'Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q')
-MIN_TASK_REWARD = 500  # Minimum WATT to post a task
-MAX_TASK_REWARD = 1000000  # Maximum WATT per task
-
-# Cache
-_tasks_cache = {"data": None, "expires": 0}
-CACHE_TTL = 300  # 5 minutes
-
-# =============================================================================
-# STORAGE
-# =============================================================================
-
-def load_submissions():
-    """Load submissions from JSON file."""
+def load_tasks():
+    """Load tasks data from disk."""
     try:
-        with open(SUBMISSIONS_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"submissions": []}
+        if os.path.exists(TASKS_FILE):
+            with open(TASKS_FILE, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error("Failed to load tasks: %s", e)
+    return {"tasks": {}, "stats": {"total_created": 0, "total_completed": 0, "total_watt_escrowed": 0, "total_watt_paid": 0}}
 
-def save_submissions(data):
-    """Save submissions to JSON file."""
+
+def save_tasks(data):
+    """Save tasks data to disk."""
     try:
-        os.makedirs(os.path.dirname(SUBMISSIONS_FILE), exist_ok=True)
-        with open(SUBMISSIONS_FILE, 'w') as f:
+        os.makedirs(os.path.dirname(TASKS_FILE), exist_ok=True)
+        with open(TASKS_FILE, 'w') as f:
             json.dump(data, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving submissions: {e}")
-        return False
+    except IOError as e:
+        logger.error("Failed to save tasks: %s", e)
 
-def generate_submission_id():
-    """Generate unique submission ID."""
-    return f"sub_{uuid.uuid4().hex[:12]}"
 
 def generate_task_id():
-    """Generate unique external task ID (starts with 'ext_')."""
-    return f"ext_{uuid.uuid4().hex[:8]}"
+    """Generate unique task ID."""
+    return f"task_{uuid.uuid4().hex[:12]}"
 
-# =============================================================================
-# EXTERNAL TASKS STORAGE
-# =============================================================================
 
-def load_external_tasks():
-    """Load external tasks from JSON file."""
-    try:
-        with open(EXTERNAL_TASKS_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"tasks": []}
+# === Payment Integration ===
 
-def save_external_tasks(data):
-    """Save external tasks to JSON file."""
-    try:
-        os.makedirs(os.path.dirname(EXTERNAL_TASKS_FILE), exist_ok=True)
-        with open(EXTERNAL_TASKS_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving external tasks: {e}")
-        return False
-
-# =============================================================================
-# TX VERIFICATION
-# =============================================================================
-
-def verify_watt_payment(tx_signature: str, expected_amount: int, from_wallet: str = None) -> dict:
+def verify_escrow_payment(wallet, tx_signature, amount):
     """
-    Verify WATT transfer to treasury wallet.
-    Returns: {"valid": bool, "amount": int, "error": str}
+    Verify WATT escrow payment.
+    Imports from api_llm to reuse existing payment verification.
     """
     try:
-        resp = requests.post(SOLANA_RPC, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTransaction",
-            "params": [tx_signature, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
-        }, timeout=15)
-        
-        data = resp.json()
-        if "error" in data or not data.get("result"):
-            return {"valid": False, "amount": 0, "error": "Transaction not found"}
-        
-        tx = data["result"]
-        
-        # Check age (must be within last 1 hour for task posting)
-        block_time = tx.get("blockTime", 0)
-        if time.time() - block_time > 3600:
-            return {"valid": False, "amount": 0, "error": "Transaction too old (>1 hour)"}
-        
-        # Check pre/post token balances for WATT transfer to treasury
-        meta = tx.get("meta", {})
-        pre_balances = meta.get("preTokenBalances", [])
-        post_balances = meta.get("postTokenBalances", [])
-        
-        treasury_pre = 0
-        treasury_post = 0
-        sender_found = False
-        
-        for bal in pre_balances:
-            if bal.get("mint") == WATT_MINT:
-                owner = bal.get("owner", "")
-                if owner == TREASURY_WALLET:
-                    treasury_pre = int(bal.get("uiTokenAmount", {}).get("amount", 0))
-                elif from_wallet and owner == from_wallet:
-                    sender_found = True
-        
-        for bal in post_balances:
-            if bal.get("mint") == WATT_MINT:
-                owner = bal.get("owner", "")
-                if owner == TREASURY_WALLET:
-                    treasury_post = int(bal.get("uiTokenAmount", {}).get("amount", 0))
-        
-        amount_received = (treasury_post - treasury_pre) / 1_000_000  # 6 decimals
-        
-        if amount_received < expected_amount:
-            return {"valid": False, "amount": amount_received, "error": f"Insufficient payment: {amount_received} < {expected_amount} WATT"}
-        
-        return {"valid": True, "amount": amount_received, "error": None}
-        
-    except Exception as e:
-        return {"valid": False, "amount": 0, "error": str(e)}
-
-# =============================================================================
-# AUTH
-# =============================================================================
-
-def require_admin(f):
-    """Require admin authentication."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.headers.get('Authorization', '')
-        if auth != f"Bearer {ADMIN_PASSWORD}":
-            return jsonify({"success": False, "error": "unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated
-
-# =============================================================================
-# HELPERS
-# =============================================================================
-
-def parse_task_amount(title):
-    """Extract WATT amount from title like [AGENT TASK: 1,000 WATT]"""
-    match = re.search(r'\[AGENT\s*TASK:\s*([\d,]+)\s*WATT\]', title, re.IGNORECASE)
-    if match:
-        return int(match.group(1).replace(',', ''))
-    return 0
-
-def get_task_type(body):
-    """Determine if task is recurring or one-time based on body content."""
-    if not body:
-        return "one-time"
-    body_lower = body.lower()
-    if any(word in body_lower for word in ['daily', 'weekly', 'monthly', 'recurring', 'every day', 'every week']):
-        return "recurring"
-    return "one-time"
-
-def get_frequency(body):
-    """Extract frequency from body for recurring tasks."""
-    if not body:
-        return None
-    body_lower = body.lower()
-    if 'daily' in body_lower or 'every day' in body_lower:
-        return "daily"
-    if 'weekly' in body_lower or 'every week' in body_lower:
-        return "weekly"
-    if 'monthly' in body_lower or 'every month' in body_lower:
-        return "monthly"
-    return None
-
-def clean_title(title):
-    """Remove [AGENT TASK: X WATT] prefix from title."""
-    return re.sub(r'\[AGENT\s*TASK:\s*[\d,]+\s*WATT\]\s*', '', title, flags=re.IGNORECASE).strip()
-
-def extract_section(body, header):
-    """Extract content under a markdown header."""
-    if not body:
-        return None
-    pattern = rf'#+\s*{header}\s*\n(.*?)(?=\n#+\s|\Z)'
-    match = re.search(pattern, body, re.IGNORECASE | re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return None
-
-# =============================================================================
-# FETCH TASKS
-# =============================================================================
-
-def fetch_tasks():
-    """Fetch agent tasks from GitHub Issues + external tasks."""
-    # Check cache
-    if _tasks_cache["data"] and time.time() < _tasks_cache["expires"]:
-        return _tasks_cache["data"]
-    
-    tasks = []
-    
-    # 1. Fetch GitHub Issues with agent-task label
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"token {GITHUB_TOKEN}"
-    
-    try:
-        resp = requests.get(
-            GITHUB_API,
-            params={"labels": "agent-task", "state": "open", "per_page": 50},
-            headers=headers,
-            timeout=15
+        from api_llm import verify_watt_payment, save_used_signature
+        verified, error_code, error_message = verify_watt_payment(
+            tx_signature, wallet, amount
         )
-        
-        if resp.status_code == 200:
-            issues = resp.json()
-            
-            for issue in issues:
-                amount = parse_task_amount(issue["title"])
-                if amount == 0:
-                    continue
-                
-                body = issue.get("body", "") or ""
-                task_type = get_task_type(body)
-                
-                task = {
-                    "id": issue["number"],
-                    "source": "github",
-                    "title": clean_title(issue["title"]),
-                    "amount": amount,
-                    "type": task_type,
-                    "frequency": get_frequency(body) if task_type == "recurring" else None,
-                    "description": extract_section(body, "Description") or body[:500] if body else None,
-                    "requirements": extract_section(body, "Requirements"),
-                    "submission_format": extract_section(body, "Submission") or extract_section(body, "How to Submit"),
-                    "url": issue["html_url"],
-                    "created_at": issue["created_at"],
-                    "labels": [l["name"] for l in issue.get("labels", []) if l["name"] != "agent-task"],
-                    "body": body,  # Keep full body for verification
-                    "poster": "WattCoin-Org"
-                }
-                tasks.append(task)
-        
-    except Exception as e:
-        print(f"Error fetching GitHub tasks: {e}")
-    
-    # 2. Load external tasks
+        if verified:
+            save_used_signature(tx_signature)
+        return verified, error_code, error_message
+    except ImportError:
+        logger.error("Cannot import payment verification — api_llm not available")
+        return False, "import_error", "Payment verification unavailable"
+
+
+def queue_payout(wallet, amount, task_id):
+    """
+    Queue a WATT payout to the task completer.
+    Uses existing payment queue if available, otherwise logs for manual processing.
+    """
     try:
-        external_data = load_external_tasks()
-        for ext_task in external_data.get("tasks", []):
-            if ext_task.get("status") == "open":
-                tasks.append(ext_task)
-    except Exception as e:
-        print(f"Error loading external tasks: {e}")
-    
-    # Sort by amount descending
-    tasks.sort(key=lambda x: x["amount"], reverse=True)
-    
-    # Update cache
-    _tasks_cache["data"] = tasks
-    _tasks_cache["expires"] = time.time() + CACHE_TTL
-    
-    return tasks
+        from api_webhooks import queue_payment
+        queue_payment(wallet, amount, f"Task marketplace payout: {task_id}")
+        logger.info("payout queued | task=%s wallet=%.40s amount=%d", task_id, wallet, amount)
+        return True
+    except (ImportError, Exception) as e:
+        logger.error("payout queue failed | task=%s error=%s", task_id, str(e))
+        # Fallback: save to pending payouts file
+        payout_file = os.path.join(os.getenv('DATA_DIR', '/app/data'), 'pending_task_payouts.json')
+        try:
+            payouts = []
+            if os.path.exists(payout_file):
+                with open(payout_file, 'r') as f:
+                    payouts = json.load(f)
+            payouts.append({
+                "task_id": task_id,
+                "wallet": wallet,
+                "amount": amount,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "status": "pending"
+            })
+            with open(payout_file, 'w') as f:
+                json.dump(payouts, f, indent=2)
+            return True
+        except Exception as e2:
+            logger.error("fallback payout save failed | %s", str(e2))
+            return False
 
-def get_task_by_id(task_id):
-    """Get task by ID (handles both GitHub numeric IDs and external string IDs)."""
-    tasks = fetch_tasks()
-    
-    # Handle both int and string IDs
-    for task in tasks:
-        if str(task["id"]) == str(task_id):
-            return task
-    
-    # Also check external tasks directly (bypassing cache) for external IDs
-    if isinstance(task_id, str) and task_id.startswith("ext_"):
-        external_data = load_external_tasks()
-        for ext_task in external_data.get("tasks", []):
-            if ext_task["id"] == task_id:
-                return ext_task
-    
-    return None
 
-# =============================================================================
-# GROK VERIFICATION
-# =============================================================================
+# === AI Verification ===
 
-def verify_with_grok(task, submission_result):
+def ai_verify_submission(task, submission):
     """
-    Use Grok to verify if submission meets task requirements.
-    Returns: {"pass": bool, "reason": str, "confidence": float}
+    Use AI to verify task completion quality.
+    Returns (score, feedback) tuple.
     """
-    if not GROK_API_KEY:
-        return {"pass": False, "reason": "Grok API not configured", "confidence": 0}
-    
-    prompt = f"""You are verifying an AI agent's task submission.
+    try:
+        from openai import OpenAI
+        ai_key = os.getenv('AI_API_KEY')
+        if not ai_key:
+            logger.error("AI_API_KEY not set — cannot verify")
+            return 0, "AI verification unavailable"
 
-TASK: {task['title']}
+        client = OpenAI(api_key=ai_key, base_url="https://api.x.ai/v1")
 
-REQUIREMENTS:
-{task.get('requirements') or task.get('description') or 'Complete the task as described.'}
+        verify_prompt = f"""You are a task verification AI for the WattCoin Agent Task Marketplace.
+
+Review this task submission and score it 1-10.
+
+TASK:
+- Title: {task.get('title', 'N/A')}
+- Description: {task.get('description', 'N/A')}
+- Type: {task.get('type', 'N/A')}
+- Requirements: {task.get('requirements', 'None specified')}
 
 SUBMISSION:
-{json.dumps(submission_result, indent=2)}
+{submission.get('result', 'No result provided')}
 
-Evaluate if this submission meets the task requirements.
-Reply with ONLY valid JSON (no markdown):
-{{"pass": true/false, "reason": "brief explanation", "confidence": 0.0-1.0}}
+Score criteria:
+- Does the submission address the task requirements?
+- Is the quality acceptable?
+- Is it complete or partial?
 
-Be strict but fair. Confidence should reflect how certain you are about your evaluation."""
+Respond in this exact format:
+SCORE: <1-10>
+FEEDBACK: <brief explanation>"""
 
-    try:
-        resp = requests.post(
-            GROK_API_URL,
-            headers={
-                "Authorization": f"Bearer {GROK_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "grok-4-1-fast-reasoning",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
-            },
-            timeout=30
+        response = client.chat.completions.create(
+            model="grok-3",
+            messages=[{"role": "user", "content": verify_prompt}],
+            max_tokens=500
         )
+
+        content = response.choices[0].message.content
         
-        if resp.status_code != 200:
-            return {"pass": False, "reason": f"Grok API error: {resp.status_code}", "confidence": 0}
-        
-        data = resp.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        
-        # Parse JSON response
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        
-        result = json.loads(content)
-        return {
-            "pass": bool(result.get("pass", False)),
-            "reason": str(result.get("reason", "No reason provided")),
-            "confidence": float(result.get("confidence", 0))
-        }
-        
-    except json.JSONDecodeError as e:
-        return {"pass": False, "reason": f"Failed to parse Grok response: {e}", "confidence": 0}
+        # Parse score
+        score = 0
+        feedback = content
+        for line in content.split('\n'):
+            if line.strip().upper().startswith('SCORE:'):
+                try:
+                    score = int(line.split(':')[1].strip().split('/')[0].strip())
+                except (ValueError, IndexError):
+                    score = 0
+            elif line.strip().upper().startswith('FEEDBACK:'):
+                feedback = line.split(':', 1)[1].strip()
+
+        return min(max(score, 0), 10), feedback
+
     except Exception as e:
-        return {"pass": False, "reason": f"Grok verification error: {e}", "confidence": 0}
+        logger.error("AI verification failed: %s", str(e))
+        return 0, f"Verification error: {str(e)}"
 
-# =============================================================================
-# SOLANA PAYOUT
-# =============================================================================
 
-def send_watt_payout(to_wallet, amount):
-    """
-    Send WATT tokens from bounty wallet to recipient.
-    Returns: (success, tx_signature or error_message)
-    
-    Currently queues for manual payout via dashboard.
-    Auto-payout requires BOUNTY_WALLET_PRIVATE_KEY and additional testing.
-    """
-    if not BOUNTY_WALLET_PRIVATE_KEY:
-        # Queue for manual payout - this is the expected flow for now
-        return False, "Queued for manual payout via dashboard"
-    
-    try:
-        from solders.keypair import Keypair
-        from solders.pubkey import Pubkey
-        from solders.instruction import Instruction, AccountMeta
-        from solders.transaction import Transaction
-        from solders.message import Message
-        from solders.hash import Hash
-        import struct
-        
-        # Token-2022 program ID (WATT uses Token-2022)
-        TOKEN_2022_PROGRAM_ID = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-        ASSOCIATED_TOKEN_PROGRAM_ID = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
-        
-        # Load wallet from private key
-        key_bytes = base58.b58decode(BOUNTY_WALLET_PRIVATE_KEY)
-        wallet = Keypair.from_bytes(key_bytes)
-        
-        mint = Pubkey.from_string(WATT_MINT)
-        from_pubkey = wallet.pubkey()
-        to_pubkey = Pubkey.from_string(to_wallet)
-        
-        # Get ATAs via RPC (more reliable than calculating)
-        def get_ata_for_owner(owner_str):
-            resp = requests.post(SOLANA_RPC, json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "getTokenAccountsByOwner",
-                "params": [owner_str, {"mint": WATT_MINT}, {"encoding": "jsonParsed"}]
-            }, timeout=15)
-            data = resp.json()
-            accounts = data.get("result", {}).get("value", [])
-            if accounts:
-                return Pubkey.from_string(accounts[0]["pubkey"])
-            return None
-        
-        from_ata = get_ata_for_owner(str(from_pubkey))
-        to_ata = get_ata_for_owner(to_wallet)
-        
-        if not from_ata:
-            return False, "Bounty wallet has no WATT token account"
-        if not to_ata:
-            return False, f"Recipient {to_wallet[:8]}... has no WATT token account. They need to receive WATT first."
-        
-        # Build transfer instruction (opcode 3 for SPL token transfer)
-        amount_raw = amount * (10 ** 6)  # 6 decimals
-        instruction_data = struct.pack('<BQ', 3, amount_raw)
-        
-        # Account metas for transfer: [source, dest, owner]
-        accounts = [
-            AccountMeta(from_ata, is_signer=False, is_writable=True),
-            AccountMeta(to_ata, is_signer=False, is_writable=True),
-            AccountMeta(from_pubkey, is_signer=True, is_writable=False),
-        ]
-        
-        transfer_ix = Instruction(TOKEN_2022_PROGRAM_ID, instruction_data, accounts)
-        
-        # Get recent blockhash
-        rpc_resp = requests.post(SOLANA_RPC, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getLatestBlockhash",
-            "params": [{"commitment": "finalized"}]
-        }, timeout=15)
-        blockhash_data = rpc_resp.json()
-        blockhash = Hash.from_string(blockhash_data["result"]["value"]["blockhash"])
-        
-        # Build and sign transaction
-        msg = Message.new_with_blockhash([transfer_ix], from_pubkey, blockhash)
-        tx = Transaction.new_unsigned(msg)
-        tx.sign([wallet], blockhash)
-        
-        # Serialize and send
-        tx_bytes = bytes(tx)
-        tx_base64 = base58.b58encode(tx_bytes).decode('utf-8')
-        
-        send_resp = requests.post(SOLANA_RPC, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "sendTransaction",
-            "params": [tx_base64, {"encoding": "base58", "skipPreflight": False}]
-        }, timeout=30)
-        
-        send_result = send_resp.json()
-        
-        if "result" in send_result:
-            return True, send_result["result"]
-        elif "error" in send_result:
-            return False, f"RPC error: {send_result['error'].get('message', str(send_result['error']))}"
-        else:
-            return False, "Unknown RPC response"
-            
-    except ImportError as e:
-        return False, f"Solana libraries not installed: {e}"
-    except Exception as e:
-        return False, f"Payout error: {e}"
+# === Expiration Check ===
 
-# =============================================================================
-# GITHUB COMMENT
-# =============================================================================
+def expire_stale_claims(data):
+    """Auto-expire claims that exceeded timeout."""
+    now = datetime.now(timezone.utc)
+    expired_count = 0
+    
+    for task_id, task in data.get("tasks", {}).items():
+        if task.get("status") == "claimed":
+            claimed_at = task.get("claimed_at")
+            if claimed_at:
+                claimed_time = datetime.fromisoformat(claimed_at)
+                if now - claimed_time > timedelta(hours=CLAIM_TIMEOUT_HOURS):
+                    task["status"] = "open"
+                    task["claimer_wallet"] = None
+                    task["claimed_at"] = None
+                    task["expiration_note"] = f"Claim expired after {CLAIM_TIMEOUT_HOURS}h"
+                    expired_count += 1
+                    logger.info("claim expired | task=%s", task_id)
+    
+    if expired_count > 0:
+        save_tasks(data)
+        logger.info("expired %d stale claims", expired_count)
+    
+    return expired_count
 
-def post_github_comment(issue_number, comment):
-    """Post a comment on a GitHub issue."""
-    if not GITHUB_TOKEN:
-        return False
-    
-    try:
-        resp = requests.post(
-            f"{GITHUB_API}/{issue_number}/comments",
-            headers={
-                "Authorization": f"token {GITHUB_TOKEN}",
-                "Accept": "application/vnd.github.v3+json"
-            },
-            json={"body": comment},
-            timeout=15
-        )
-        return resp.status_code == 201
-    except:
-        return False
 
-def close_github_issue(issue_number):
-    """Close a GitHub issue."""
-    if not GITHUB_TOKEN:
-        return False
-    
-    try:
-        resp = requests.patch(
-            f"{GITHUB_API}/{issue_number}",
-            headers={
-                "Authorization": f"token {GITHUB_TOKEN}",
-                "Accept": "application/vnd.github.v3+json"
-            },
-            json={"state": "closed"},
-            timeout=15
-        )
-        return resp.status_code == 200
-    except:
-        return False
-
-# =============================================================================
-# ENDPOINTS - PUBLIC
-# =============================================================================
-
-@tasks_bp.route('/api/v1/tasks', methods=['GET'])
-def list_tasks():
-    """List all agent tasks (GitHub + external)."""
-    tasks = fetch_tasks()
-    
-    # Optional filters
-    task_type = request.args.get('type')  # recurring, one-time
-    source = request.args.get('source')  # github, external
-    min_amount = request.args.get('min_amount', type=int)
-    
-    if task_type:
-        tasks = [t for t in tasks if t["type"] == task_type]
-    
-    if source:
-        tasks = [t for t in tasks if t.get("source") == source]
-    
-    if min_amount:
-        tasks = [t for t in tasks if t["amount"] >= min_amount]
-    
-    # Remove body from public response
-    tasks_public = [{k: v for k, v in t.items() if k != 'body'} for t in tasks]
-    
-    total_watt = sum(t["amount"] for t in tasks)
-    github_count = len([t for t in tasks if t.get("source") == "github"])
-    external_count = len([t for t in tasks if t.get("source") == "external"])
-    
-    return jsonify({
-        "success": True,
-        "count": len(tasks),
-        "github_tasks": github_count,
-        "external_tasks": external_count,
-        "total_watt": total_watt,
-        "tasks": tasks_public,
-        "post_endpoint": "/api/v1/tasks",
-        "submit_endpoint": "/api/v1/tasks/{id}/submit",
-        "docs": f"https://github.com/{GITHUB_REPO}/blob/main/CONTRIBUTING.md"
-    })
+# === API Endpoints ===
 
 @tasks_bp.route('/api/v1/tasks', methods=['POST'])
 def create_task():
     """
-    Create an external task. Requires WATT payment to treasury.
+    Create a new task with WATT escrow.
     
     Request:
-    {
-        "title": "Task title",
-        "description": "What needs to be done",
-        "reward": 5000,  // WATT amount
-        "tx_signature": "abc123...",  // Proof of payment
-        "poster_wallet": "AgentWallet...",
-        "type": "one-time",  // or "recurring"
-        "frequency": "daily",  // optional, for recurring
-        "deadline": "2026-02-10"  // optional ISO date
-    }
-    
-    Response:
-    {
-        "success": true,
-        "task_id": "ext_abc123",
-        "status": "open"
-    }
+        {
+            "title": "Analyze dataset and generate report",
+            "description": "Process the CSV at <url> and produce summary stats",
+            "type": "analysis",
+            "reward": 5000,
+            "requirements": "Return JSON with mean, median, std for each column",
+            "deadline_hours": 72,
+            "wallet": "CreatorWallet...",
+            "tx_signature": "..."
+        }
     """
-    data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "error": "invalid_json"}), 400
-    
-    # Validate required fields
-    title = data.get("title", "").strip()
-    description = data.get("description", "").strip()
-    reward = data.get("reward")
-    tx_signature = data.get("tx_signature", "").strip()
-    poster_wallet = data.get("poster_wallet", "").strip()
-    
-    if not title:
-        return jsonify({"success": False, "error": "missing_title"}), 400
-    if len(title) > 200:
-        return jsonify({"success": False, "error": "title_too_long", "message": "Max 200 characters"}), 400
-    if not description:
-        return jsonify({"success": False, "error": "missing_description"}), 400
-    if len(description) > 5000:
-        return jsonify({"success": False, "error": "description_too_long", "message": "Max 5000 characters"}), 400
-    if not reward or not isinstance(reward, (int, float)):
-        return jsonify({"success": False, "error": "missing_reward"}), 400
-    if reward < MIN_TASK_REWARD:
-        return jsonify({"success": False, "error": "reward_too_low", "message": f"Minimum reward is {MIN_TASK_REWARD} WATT"}), 400
-    if reward > MAX_TASK_REWARD:
-        return jsonify({"success": False, "error": "reward_too_high", "message": f"Maximum reward is {MAX_TASK_REWARD} WATT"}), 400
+    body = request.get_json(silent=True) or {}
+
+    title = (body.get('title') or '').strip()
+    description = (body.get('description') or '').strip()
+    task_type = (body.get('type') or 'other').strip().lower()
+    reward = body.get('reward', 0)
+    requirements = (body.get('requirements') or '').strip()
+    deadline_hours = body.get('deadline_hours', 72)
+    wallet = (body.get('wallet') or '').strip()
+    tx_signature = (body.get('tx_signature') or '').strip()
+
+    # === Validation ===
+    if not title or len(title) > 200:
+        return jsonify({"success": False, "error": "title required (max 200 chars)"}), 400
+    if not description or len(description) > 4000:
+        return jsonify({"success": False, "error": "description required (max 4000 chars)"}), 400
+    if task_type not in VALID_TYPES:
+        return jsonify({"success": False, "error": f"invalid type. Valid: {', '.join(VALID_TYPES)}"}), 400
+    if not isinstance(reward, (int, float)) or reward < MIN_REWARD:
+        return jsonify({"success": False, "error": f"reward must be >= {MIN_REWARD} WATT"}), 400
+    if reward > MAX_REWARD:
+        return jsonify({"success": False, "error": f"reward must be <= {MAX_REWARD} WATT"}), 400
+    if not wallet:
+        return jsonify({"success": False, "error": "wallet required"}), 400
     if not tx_signature:
-        return jsonify({"success": False, "error": "missing_tx_signature", "message": "Payment tx signature required"}), 400
-    if not poster_wallet or len(poster_wallet) < 32:
-        return jsonify({"success": False, "error": "missing_poster_wallet"}), 400
-    
+        return jsonify({"success": False, "error": "tx_signature required (escrow payment)"}), 400
+
     reward = int(reward)
-    
-    # Check if tx_signature already used
-    external_data = load_external_tasks()
-    for existing in external_data.get("tasks", []):
-        if existing.get("tx_signature") == tx_signature:
-            return jsonify({"success": False, "error": "tx_already_used", "message": "This transaction was already used"}), 400
-    
-    # Verify payment on-chain
-    payment_check = verify_watt_payment(tx_signature, reward, poster_wallet)
-    if not payment_check["valid"]:
-        return jsonify({
-            "success": False, 
-            "error": "payment_verification_failed",
-            "message": payment_check["error"]
-        }), 400
-    
-    # Create task
+
+    # === Verify Escrow Payment ===
+    verified, error_code, error_message = verify_escrow_payment(wallet, tx_signature, reward)
+    if not verified:
+        logger.warning("escrow payment failed | wallet=%.40s error=%s", wallet, error_code)
+        return jsonify({"success": False, "error": f"Escrow payment failed: {error_message}"}), 400
+
+    # === Create Task ===
     task_id = generate_task_id()
-    task_type = data.get("type", "one-time")
-    if task_type not in ["one-time", "recurring"]:
-        task_type = "one-time"
-    
-    new_task = {
-        "id": task_id,
-        "source": "external",
+    now = datetime.now(timezone.utc).isoformat()
+    deadline = (datetime.now(timezone.utc) + timedelta(hours=deadline_hours)).isoformat()
+
+    task = {
         "title": title,
         "description": description,
-        "amount": reward,
         "type": task_type,
-        "frequency": data.get("frequency") if task_type == "recurring" else None,
-        "deadline": data.get("deadline"),
-        "poster": poster_wallet,
-        "tx_signature": tx_signature,
+        "reward": reward,
+        "platform_fee": int(reward * PLATFORM_FEE_PCT / 100),
+        "worker_payout": reward - int(reward * PLATFORM_FEE_PCT / 100),
+        "requirements": requirements,
+        "creator_wallet": wallet,
+        "escrow_tx": tx_signature,
         "status": "open",
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "url": None,  # No GitHub URL for external tasks
-        "labels": ["external"],
-        "requirements": description,  # Use description as requirements
-        "submission_format": "Submit proof of completion via /api/v1/tasks/{id}/submit",
-        "body": description,
-        "submissions_count": 0,
-        "completed_by": None,
-        "completed_at": None
+        "created_at": now,
+        "deadline": deadline,
+        "deadline_hours": deadline_hours,
+        "claimer_wallet": None,
+        "claimed_at": None,
+        "submission": None,
+        "submitted_at": None,
+        "verification": None,
+        "verified_at": None,
+        "payout_tx": None
     }
-    
-    external_data["tasks"].append(new_task)
-    save_external_tasks(external_data)
-    
-    # Clear cache
-    _tasks_cache["data"] = None
-    
+
+    data = load_tasks()
+    data["tasks"][task_id] = task
+    data["stats"]["total_created"] += 1
+    data["stats"]["total_watt_escrowed"] += reward
+    save_tasks(data)
+
+    logger.info("task created | id=%s type=%s reward=%d wallet=%.40s", task_id, task_type, reward, wallet)
+
     return jsonify({
         "success": True,
         "task_id": task_id,
         "status": "open",
         "reward": reward,
-        "message": f"Task created! {reward} WATT will be paid to first valid submission.",
-        "submit_endpoint": f"/api/v1/tasks/{task_id}/submit"
+        "worker_payout": task["worker_payout"],
+        "platform_fee": task["platform_fee"],
+        "deadline": deadline,
+        "message": f"Task created! {reward} WATT escrowed. Workers receive {task['worker_payout']} WATT on completion."
+    }), 201
+
+
+@tasks_bp.route('/api/v1/tasks', methods=['GET'])
+def list_tasks():
+    """
+    List tasks with optional filters.
+    
+    Query params:
+        status  — filter by status (open, claimed, submitted, verified, rejected)
+        type    — filter by type (code, data, content, scrape, analysis, other)
+        limit   — max results (default 50, max 100)
+    """
+    status_filter = request.args.get('status', '').lower()
+    type_filter = request.args.get('type', '').lower()
+    limit = min(int(request.args.get('limit', 50)), 100)
+
+    data = load_tasks()
+    
+    # Expire stale claims on read
+    expire_stale_claims(data)
+
+    tasks = []
+    for task_id, task in data.get("tasks", {}).items():
+        if status_filter and task.get("status") != status_filter:
+            continue
+        if type_filter and task.get("type") != type_filter:
+            continue
+        
+        tasks.append({
+            "task_id": task_id,
+            "title": task.get("title"),
+            "type": task.get("type"),
+            "reward": task.get("reward"),
+            "worker_payout": task.get("worker_payout"),
+            "status": task.get("status"),
+            "created_at": task.get("created_at"),
+            "deadline": task.get("deadline"),
+            "creator_wallet": task.get("creator_wallet", "")[:8] + "..."
+        })
+
+    # Sort by newest first
+    tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    tasks = tasks[:limit]
+
+    return jsonify({
+        "success": True,
+        "tasks": tasks,
+        "total": len(tasks),
+        "stats": data.get("stats", {})
     })
+
 
 @tasks_bp.route('/api/v1/tasks/<task_id>', methods=['GET'])
 def get_task(task_id):
-    """Get single task by ID (supports both GitHub numeric and external string IDs)."""
-    # Try to convert to int for GitHub tasks
-    try:
-        task_id_parsed = int(task_id)
-    except ValueError:
-        task_id_parsed = task_id  # Keep as string for external tasks
-    
-    task = get_task_by_id(task_id_parsed)
-    
+    """Get full task details."""
+    data = load_tasks()
+    task = data.get("tasks", {}).get(task_id)
+
     if not task:
-        return jsonify({
-            "success": False,
-            "error": "task_not_found",
-            "message": f"Task {task_id} not found or not open"
-        }), 404
-    
-    # Remove body from public response
-    task_public = {k: v for k, v in task.items() if k != 'body'}
-    
+        return jsonify({"success": False, "error": "task not found"}), 404
+
     return jsonify({
         "success": True,
-        "task": task_public
+        "task_id": task_id,
+        **task
     })
+
+
+@tasks_bp.route('/api/v1/tasks/<task_id>/claim', methods=['POST'])
+def claim_task(task_id):
+    """
+    Claim an open task.
+    
+    Request:
+        {
+            "wallet": "ClaimerWallet...",
+            "agent_name": "ClawBot"  (optional)
+        }
+    """
+    body = request.get_json(silent=True) or {}
+    wallet = (body.get('wallet') or '').strip()
+    agent_name = (body.get('agent_name') or 'anonymous').strip()
+
+    if not wallet:
+        return jsonify({"success": False, "error": "wallet required"}), 400
+
+    data = load_tasks()
+    
+    # Expire stale claims first
+    expire_stale_claims(data)
+    
+    task = data.get("tasks", {}).get(task_id)
+
+    if not task:
+        return jsonify({"success": False, "error": "task not found"}), 404
+    if task.get("status") != "open":
+        return jsonify({"success": False, "error": f"task is {task.get('status')}, not open"}), 409
+    if task.get("creator_wallet") == wallet:
+        return jsonify({"success": False, "error": "cannot claim your own task"}), 400
+
+    # Check deadline
+    deadline = datetime.fromisoformat(task.get("deadline"))
+    if datetime.now(timezone.utc) > deadline:
+        task["status"] = "expired"
+        save_tasks(data)
+        return jsonify({"success": False, "error": "task deadline has passed"}), 410
+
+    # Claim it
+    now = datetime.now(timezone.utc).isoformat()
+    task["status"] = "claimed"
+    task["claimer_wallet"] = wallet
+    task["claimer_name"] = agent_name
+    task["claimed_at"] = now
+    save_tasks(data)
+
+    logger.info("task claimed | id=%s agent=%s wallet=%.40s", task_id, agent_name, wallet)
+
+    return jsonify({
+        "success": True,
+        "task_id": task_id,
+        "status": "claimed",
+        "reward": task.get("reward"),
+        "worker_payout": task.get("worker_payout"),
+        "claim_expires": (datetime.now(timezone.utc) + timedelta(hours=CLAIM_TIMEOUT_HOURS)).isoformat(),
+        "message": f"Task claimed! Submit result within {CLAIM_TIMEOUT_HOURS}h."
+    })
+
 
 @tasks_bp.route('/api/v1/tasks/<task_id>/submit', methods=['POST'])
 def submit_task(task_id):
     """
-    Submit task result for verification and payout.
+    Submit task result.
     
     Request:
-        {"result": {...}, "wallet": "AgentWalletAddress"}
-    
-    Response:
-        {"success": true, "submission_id": "sub_xxx", "status": "pending_review|approved|paid"}
+        {
+            "wallet": "ClaimerWallet...",
+            "result": "Here is the completed work...",
+            "result_url": "https://..."  (optional — link to PR, file, etc)
+        }
     """
-    # Parse task_id (could be int for GitHub or string for external)
-    try:
-        task_id_parsed = int(task_id)
-    except ValueError:
-        task_id_parsed = task_id  # Keep as string for external tasks
-    
-    # Validate request
-    data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "error": "invalid_json"}), 400
-    
-    result = data.get("result")
-    wallet = data.get("wallet")
-    
-    if not result:
-        return jsonify({"success": False, "error": "missing_result", "message": "result field is required"}), 400
+    body = request.get_json(silent=True) or {}
+    wallet = (body.get('wallet') or '').strip()
+    result = (body.get('result') or '').strip()
+    result_url = (body.get('result_url') or '').strip()
+
     if not wallet:
-        return jsonify({"success": False, "error": "missing_wallet", "message": "wallet field is required"}), 400
-    
-    # Validate wallet format (basic check)
-    if len(wallet) < 32 or len(wallet) > 50:
-        return jsonify({"success": False, "error": "invalid_wallet", "message": "Invalid Solana wallet address"}), 400
-    
-    # Get task
-    task = get_task_by_id(task_id_parsed)
+        return jsonify({"success": False, "error": "wallet required"}), 400
+    if not result and not result_url:
+        return jsonify({"success": False, "error": "result or result_url required"}), 400
+    if len(result) > 10000:
+        return jsonify({"success": False, "error": "result too long (max 10000 chars)"}), 400
+
+    data = load_tasks()
+    task = data.get("tasks", {}).get(task_id)
+
     if not task:
-        return jsonify({"success": False, "error": "task_not_found", "message": f"Task {task_id} not found or not open"}), 404
-    
-    # Check if external task is already completed
-    if task.get("source") == "external" and task.get("status") != "open":
-        return jsonify({"success": False, "error": "task_closed", "message": "This task is no longer open"}), 400
-    
-    # Create submission
-    submission_id = generate_submission_id()
-    submission = {
-        "id": submission_id,
-        "task_id": task_id_parsed,
-        "task_source": task.get("source", "github"),
-        "task_title": task["title"],
-        "amount": task["amount"],
-        "wallet": wallet,
-        "result": result,
-        "submitted_at": datetime.utcnow().isoformat() + "Z",
-        "status": "pending_review",
-        "grok_review": None,
-        "tx_signature": None,
-        "paid_at": None,
-        "reviewed_at": None
-    }
-    
-    # Verify with Grok
-    grok_review = verify_with_grok(task, result)
-    submission["grok_review"] = grok_review
-    submission["reviewed_at"] = datetime.utcnow().isoformat() + "Z"
-    
-    # Determine status based on Grok review
-    if grok_review["pass"] and grok_review["confidence"] >= AUTO_APPROVE_CONFIDENCE:
-        submission["status"] = "approved"
-        
-        # Auto-payout
-        success, tx_or_error = send_watt_payout(wallet, task["amount"])
-        
-        if success:
-            submission["status"] = "paid"
-            submission["tx_signature"] = tx_or_error
-            submission["paid_at"] = datetime.utcnow().isoformat() + "Z"
-            
-            # Handle based on task source
-            if task.get("source") == "github":
-                # Post GitHub comment
-                comment = f"""## ✅ Task Completed - Auto-Verified
+        return jsonify({"success": False, "error": "task not found"}), 404
+    if task.get("status") != "claimed":
+        return jsonify({"success": False, "error": f"task is {task.get('status')}, not claimed"}), 409
+    if task.get("claimer_wallet") != wallet:
+        return jsonify({"success": False, "error": "only the claimer can submit"}), 403
 
-**Submission ID:** `{submission_id}`
-**Agent Wallet:** `{wallet}`
-**Payout:** {task["amount"]:,} WATT
-**TX:** [{tx_or_error[:16]}...](https://solscan.io/tx/{tx_or_error})
-
----
-*Verified by Grok AI (confidence: {grok_review["confidence"]:.0%})*
-"""
-                post_github_comment(task_id_parsed, comment)
-                
-                # Close issue if one-time task
-                if task["type"] == "one-time":
-                    close_github_issue(task_id_parsed)
-            else:
-                # External task - update status in JSON
-                external_data = load_external_tasks()
-                for ext_task in external_data.get("tasks", []):
-                    if ext_task["id"] == task_id_parsed:
-                        if task["type"] == "one-time":
-                            ext_task["status"] = "completed"
-                        ext_task["completed_by"] = wallet
-                        ext_task["completed_at"] = datetime.utcnow().isoformat() + "Z"
-                        ext_task["submissions_count"] = ext_task.get("submissions_count", 0) + 1
-                        break
-                save_external_tasks(external_data)
-        else:
-            # Check if it's queued for manual payout (expected) vs actual failure
-            if "manual payout" in tx_or_error.lower():
-                submission["status"] = "approved"  # Verified, awaiting manual payout
-                submission["payout_note"] = "Awaiting manual payout via dashboard"
-            else:
-                submission["status"] = "payout_failed"
-                submission["payout_error"] = tx_or_error
-    
-    elif grok_review["pass"]:
-        # Pass but low confidence - queue for manual review
-        submission["status"] = "pending_review"
-    
-    else:
-        # Failed verification
-        submission["status"] = "rejected"
-    
     # Save submission
-    submissions_data = load_submissions()
-    submissions_data["submissions"].append(submission)
-    save_submissions(submissions_data)
-    
-    # Clear task cache so updated info is fetched
-    _tasks_cache["data"] = None
-    
+    now = datetime.now(timezone.utc).isoformat()
+    task["status"] = "submitted"
+    task["submission"] = {
+        "result": result,
+        "result_url": result_url,
+        "submitted_at": now
+    }
+    task["submitted_at"] = now
+    save_tasks(data)
+
+    logger.info("task submitted | id=%s wallet=%.40s", task_id, wallet)
+
     return jsonify({
         "success": True,
-        "submission_id": submission_id,
-        "task_id": task_id_parsed,
-        "status": submission["status"],
-        "grok_review": grok_review,
-        "tx_signature": submission.get("tx_signature"),
-        "message": {
-            "paid": f"Task completed! {task['amount']:,} WATT sent to {wallet[:8]}...",
-            "approved": f"Task verified by Grok! {task['amount']:,} WATT payout pending admin approval.",
-            "pending_review": "Submitted for manual review (Grok confidence below threshold).",
-            "rejected": f"Submission rejected: {grok_review['reason']}",
-            "payout_failed": f"Verified but payout failed: {submission.get('payout_error', 'Unknown error')}"
-        }.get(submission["status"], "Submitted.")
+        "task_id": task_id,
+        "status": "submitted",
+        "message": "Submission received! AI verification pending."
     })
 
-# =============================================================================
-# ENDPOINTS - ADMIN
-# =============================================================================
 
-@tasks_bp.route('/api/v1/tasks/<task_id>/submissions', methods=['GET'])
-@require_admin
-def list_submissions(task_id):
-    """List all submissions for a task (admin only)."""
-    # Parse task_id
-    try:
-        task_id_parsed = int(task_id)
-    except ValueError:
-        task_id_parsed = task_id
+@tasks_bp.route('/api/v1/tasks/<task_id>/verify', methods=['POST'])
+def verify_task(task_id):
+    """
+    Trigger AI verification of a submitted task.
+    Can be called by the task creator or automatically.
     
-    submissions_data = load_submissions()
-    # Match both int and string versions
-    task_submissions = [s for s in submissions_data["submissions"] if str(s["task_id"]) == str(task_id_parsed)]
+    Request:
+        {
+            "wallet": "CreatorWallet..."  (optional — for creator-initiated verify)
+        }
+    """
+    body = request.get_json(silent=True) or {}
     
+    data = load_tasks()
+    task = data.get("tasks", {}).get(task_id)
+
+    if not task:
+        return jsonify({"success": False, "error": "task not found"}), 404
+    if task.get("status") != "submitted":
+        return jsonify({"success": False, "error": f"task is {task.get('status')}, not submitted"}), 409
+
+    # Run AI verification
+    submission = task.get("submission", {})
+    score, feedback = ai_verify_submission(task, submission)
+
+    now = datetime.now(timezone.utc).isoformat()
+    task["verification"] = {
+        "score": score,
+        "feedback": feedback,
+        "threshold": VERIFY_THRESHOLD,
+        "verified_at": now
+    }
+    task["verified_at"] = now
+
+    if score >= VERIFY_THRESHOLD:
+        # === PASSED — Pay the worker ===
+        task["status"] = "verified"
+        worker_payout = task.get("worker_payout", 0)
+        claimer_wallet = task.get("claimer_wallet")
+
+        payout_success = queue_payout(claimer_wallet, worker_payout, task_id)
+
+        data["stats"]["total_completed"] += 1
+        data["stats"]["total_watt_paid"] += worker_payout
+        save_tasks(data)
+
+        logger.info("task verified PASS | id=%s score=%d payout=%d wallet=%.40s",
+                     task_id, score, worker_payout, claimer_wallet)
+
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "status": "verified",
+            "score": score,
+            "feedback": feedback,
+            "payout": worker_payout,
+            "payout_queued": payout_success,
+            "message": f"Verified! {worker_payout} WATT payment queued to {claimer_wallet[:8]}..."
+        })
+    else:
+        # === FAILED — Reject, re-open task ===
+        task["status"] = "rejected"
+        task["claimer_wallet"] = None
+        task["claimed_at"] = None
+        task["submission"] = None
+        task["submitted_at"] = None
+        save_tasks(data)
+
+        logger.info("task verified FAIL | id=%s score=%d", task_id, score)
+
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "status": "rejected",
+            "score": score,
+            "feedback": feedback,
+            "threshold": VERIFY_THRESHOLD,
+            "message": f"Score {score}/{VERIFY_THRESHOLD} — task re-opened for other agents."
+        })
+
+
+@tasks_bp.route('/api/v1/tasks/<task_id>/cancel', methods=['POST'])
+def cancel_task(task_id):
+    """
+    Cancel an open task (creator only). Refund not automatic — manual process.
+    
+    Request:
+        {
+            "wallet": "CreatorWallet..."
+        }
+    """
+    body = request.get_json(silent=True) or {}
+    wallet = (body.get('wallet') or '').strip()
+
+    if not wallet:
+        return jsonify({"success": False, "error": "wallet required"}), 400
+
+    data = load_tasks()
+    task = data.get("tasks", {}).get(task_id)
+
+    if not task:
+        return jsonify({"success": False, "error": "task not found"}), 404
+    if task.get("creator_wallet") != wallet:
+        return jsonify({"success": False, "error": "only the creator can cancel"}), 403
+    if task.get("status") not in ("open", "rejected"):
+        return jsonify({"success": False, "error": f"cannot cancel task in '{task.get('status')}' status"}), 409
+
+    task["status"] = "cancelled"
+    task["cancelled_at"] = datetime.now(timezone.utc).isoformat()
+    save_tasks(data)
+
+    logger.info("task cancelled | id=%s wallet=%.40s", task_id, wallet)
+
     return jsonify({
         "success": True,
-        "task_id": task_id_parsed,
-        "count": len(task_submissions),
-        "submissions": task_submissions
+        "task_id": task_id,
+        "status": "cancelled",
+        "message": "Task cancelled. Contact team for escrow refund."
     })
 
-@tasks_bp.route('/api/v1/tasks/submissions', methods=['GET'])
-@require_admin
-def list_all_submissions():
-    """List all submissions (admin only)."""
-    submissions_data = load_submissions()
+
+@tasks_bp.route('/api/v1/tasks/stats', methods=['GET'])
+def task_stats():
+    """Get marketplace statistics."""
+    data = load_tasks()
     
-    # Optional status filter
-    status = request.args.get('status')
-    submissions = submissions_data["submissions"]
-    
-    if status:
-        submissions = [s for s in submissions if s["status"] == status]
-    
+    # Count by status
+    status_counts = {}
+    type_counts = {}
+    for task in data.get("tasks", {}).values():
+        status = task.get("status", "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        ttype = task.get("type", "unknown")
+        type_counts[ttype] = type_counts.get(ttype, 0) + 1
+
     return jsonify({
         "success": True,
-        "count": len(submissions),
-        "submissions": submissions
+        "stats": data.get("stats", {}),
+        "by_status": status_counts,
+        "by_type": type_counts,
+        "config": {
+            "platform_fee_pct": PLATFORM_FEE_PCT,
+            "min_reward": MIN_REWARD,
+            "max_reward": MAX_REWARD,
+            "claim_timeout_hours": CLAIM_TIMEOUT_HOURS,
+            "verify_threshold": VERIFY_THRESHOLD,
+            "valid_types": VALID_TYPES
+        }
     })
-
-@tasks_bp.route('/api/v1/tasks/external', methods=['GET'])
-@require_admin
-def list_external_tasks():
-    """List all external tasks with full details (admin only)."""
-    external_data = load_external_tasks()
-    tasks = external_data.get("tasks", [])
-    
-    # Optional status filter
-    status = request.args.get('status')  # open, completed, cancelled
-    if status:
-        tasks = [t for t in tasks if t.get("status") == status]
-    
-    # Calculate stats
-    open_count = len([t for t in external_data.get("tasks", []) if t.get("status") == "open"])
-    completed_count = len([t for t in external_data.get("tasks", []) if t.get("status") == "completed"])
-    total_watt_posted = sum(t.get("amount", 0) for t in external_data.get("tasks", []))
-    total_watt_paid = sum(t.get("amount", 0) for t in external_data.get("tasks", []) if t.get("status") == "completed")
-    
-    return jsonify({
-        "success": True,
-        "count": len(tasks),
-        "stats": {
-            "open": open_count,
-            "completed": completed_count,
-            "total_posted_watt": total_watt_posted,
-            "total_paid_watt": total_watt_paid
-        },
-        "tasks": tasks
-    })
-
-@tasks_bp.route('/api/v1/tasks/<task_id>/approve/<submission_id>', methods=['POST'])
-@require_admin
-def approve_submission(task_id, submission_id):
-    """Manually approve a submission and trigger payout (admin only)."""
-    # Parse task_id for comparison
-    try:
-        task_id_parsed = int(task_id)
-    except ValueError:
-        task_id_parsed = task_id
-    
-    submissions_data = load_submissions()
-    
-    for sub in submissions_data["submissions"]:
-        if sub["id"] == submission_id and str(sub["task_id"]) == str(task_id_parsed):
-            if sub["status"] == "paid":
-                return jsonify({"success": False, "error": "already_paid"}), 400
-            
-            # Get task for amount
-            task = get_task_by_id(task_id_parsed)
-            amount = task["amount"] if task else sub.get("amount", 0)
-            
-            # Send payout
-            success, tx_or_error = send_watt_payout(sub["wallet"], amount)
-            
-            if success:
-                sub["status"] = "paid"
-                sub["tx_signature"] = tx_or_error
-                sub["paid_at"] = datetime.utcnow().isoformat() + "Z"
-                sub["approved_by"] = "admin"
-                save_submissions(submissions_data)
-                
-                # Update external task if applicable
-                if task and task.get("source") == "external":
-                    external_data = load_external_tasks()
-                    for ext_task in external_data.get("tasks", []):
-                        if ext_task["id"] == task_id_parsed:
-                            if task["type"] == "one-time":
-                                ext_task["status"] = "completed"
-                            ext_task["completed_by"] = sub["wallet"]
-                            ext_task["completed_at"] = datetime.utcnow().isoformat() + "Z"
-                            break
-                    save_external_tasks(external_data)
-                elif task and task.get("source") == "github":
-                    # Post GitHub comment
-                    comment = f"""## ✅ Task Completed - Admin Approved
-
-**Submission ID:** `{submission_id}`
-**Agent Wallet:** `{sub['wallet']}`
-**Payout:** {amount:,} WATT
-**TX:** [{tx_or_error[:16]}...](https://solscan.io/tx/{tx_or_error})
-
----
-*Manually approved by admin*
-"""
-                    post_github_comment(task_id_parsed, comment)
-                
-                return jsonify({
-                    "success": True,
-                    "status": "paid",
-                    "tx_signature": tx_or_error
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "error": "payout_failed",
-                    "message": tx_or_error
-                }), 500
-    
-    return jsonify({"success": False, "error": "submission_not_found"}), 404
-
-@tasks_bp.route('/api/v1/tasks/<task_id>/reject/<submission_id>', methods=['POST'])
-@require_admin
-def reject_submission(task_id, submission_id):
-    """Manually reject a submission (admin only)."""
-    # Parse task_id for comparison
-    try:
-        task_id_parsed = int(task_id)
-    except ValueError:
-        task_id_parsed = task_id
-    
-    data = request.get_json() or {}
-    reason = data.get("reason", "Rejected by admin")
-    
-    submissions_data = load_submissions()
-    
-    for sub in submissions_data["submissions"]:
-        if sub["id"] == submission_id and str(sub["task_id"]) == str(task_id_parsed):
-            if sub["status"] == "paid":
-                return jsonify({"success": False, "error": "already_paid"}), 400
-            
-            sub["status"] = "rejected"
-            sub["reject_reason"] = reason
-            sub["rejected_at"] = datetime.utcnow().isoformat() + "Z"
-            save_submissions(submissions_data)
-            
-            return jsonify({
-                "success": True,
-                "status": "rejected",
-                "reason": reason
-            })
-    
-    return jsonify({"success": False, "error": "submission_not_found"}), 404
