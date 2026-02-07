@@ -6,6 +6,7 @@ This version uses the CORRECT Transaction signing API for modern solders
 
 import os
 import json
+import re
 import requests
 import base58
 import struct
@@ -581,6 +582,69 @@ def watt_scrape(url: str, format: str = "text", timeout_sec: int = 30) -> Dict[s
         raise APIError(f"Unexpected error in scraping: {e}")
 
 # =============================================================================
+# WATTNODE
+# =============================================================================
+
+_NODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
+
+
+def _get_node_base_url() -> str:
+    base_url = os.getenv("WATTNODE_API_BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise RuntimeError("WATTNODE_API_BASE_URL not set")
+    return base_url
+
+
+def _get_node_timeout_seconds() -> float:
+    try:
+        return float(os.getenv("WATTNODE_API_TIMEOUT", "10"))
+    except ValueError as exc:
+        raise RuntimeError("Invalid WATTNODE_API_TIMEOUT value") from exc
+
+
+def get_node_earnings(node_id: str) -> dict:
+    """
+    Fetch total earnings for a WattNode.
+
+    Returns: {"total_watt": float, "jobs_completed": int, "success_rate": float}
+    """
+    if not node_id or not _NODE_ID_RE.match(node_id):
+        raise ValueError("Invalid node ID")
+
+    base_url = _get_node_base_url()
+    timeout_seconds = _get_node_timeout_seconds()
+    url = f"{base_url}/nodes/{node_id}/earnings"
+
+    try:
+        response = requests.get(url, timeout=timeout_seconds)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Request failed: {exc}") from exc
+
+    if response.status_code in {400, 404}:
+        raise ValueError("Invalid node ID")
+    if response.status_code >= 500:
+        raise RuntimeError(f"Server error: {response.status_code}")
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Malformed response") from exc
+
+    data = payload.get("data", payload)
+    try:
+        total_watt = float(data["total_watt"])
+        jobs_completed = int(data["jobs_completed"])
+        success_rate = float(data["success_rate"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("Malformed response") from exc
+
+    return {
+        "total_watt": total_watt,
+        "jobs_completed": jobs_completed,
+        "success_rate": success_rate,
+    }
+
+# =============================================================================
 # TASKS
 # =============================================================================
 
@@ -851,6 +915,7 @@ __all__ = [
     "watt_tasks",
     "watt_submit",
     "watt_post_task",
+    "get_node_earnings",
     
     # Helper functions
     "watt_check_balance_for",
