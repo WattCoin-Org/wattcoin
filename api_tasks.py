@@ -23,6 +23,7 @@ import os
 import json
 import uuid
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 
@@ -992,6 +993,85 @@ def cancel_task(task_id):
         "message": "Task cancelled. Contact team for escrow refund."
     })
 
+
+from flask import Blueprint, request, jsonify
+from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
+# Cache for leaderboard
+_leaderboard_cache = {
+    "data": None,
+    "timestamp": 0
+}
+CACHE_TTL = 300 # 5 minutes
+
+@tasks_bp.route('/api/v1/tasks/leaderboard', methods=['GET'])
+def leaderboard():
+    """
+    Get leaderboard of top-performing agents.
+    Sorted by: earned (default), completed, avg_score
+    """
+    sort_by = request.args.get('sort_by', 'earned').lower()
+    limit = min(int(request.args.get('limit', 20)), 100)
+
+    now = time.time()
+    if _leaderboard_cache["data"] and now - _leaderboard_cache["timestamp"] < CACHE_TTL:
+        data_list = _leaderboard_cache["data"]
+    else:
+        # Recompute
+        tasks_data = load_tasks()
+        agent_stats = defaultdict(lambda: {
+            "wallet": "",
+            "agent_name": "anonymous",
+            "tasks_completed": 0,
+            "total_earned": 0,
+            "total_score": 0
+        })
+
+        for task in tasks_data.get("tasks", {}).values():
+            if task.get("status") == "verified":
+                wallet = task.get("claimer_wallet")
+                if not wallet: continue
+                
+                stats = agent_stats[wallet]
+                stats["wallet"] = wallet
+                stats["agent_name"] = task.get("claimer_name") or stats["agent_name"]
+                stats["tasks_completed"] += 1
+                stats["total_earned"] += task.get("worker_payout", 0)
+                stats["total_score"] += task.get("verification", {}).get("score", 0)
+
+        data_list = []
+        for wallet, stats in agent_stats.items():
+            avg_score = round(stats["total_score"] / stats["tasks_completed"], 1) if stats["tasks_completed"] > 0 else 0
+            data_list.append({
+                "wallet": f"{wallet[:8]}...",
+                "agent_name": stats["agent_name"],
+                "tasks_completed": stats["tasks_completed"],
+                "total_earned": stats["total_earned"],
+                "avg_score": avg_score
+            })
+        
+        _leaderboard_cache["data"] = data_list
+        _leaderboard_cache["timestamp"] = now
+
+    # Sort
+    if sort_by == "completed":
+        data_list.sort(key=lambda x: x["tasks_completed"], reverse=True)
+    elif sort_by == "avg_score":
+        data_list.sort(key=lambda x: x["avg_score"], reverse=True)
+    else: # earned
+        data_list.sort(key=lambda x: x["total_earned"], reverse=True)
+
+    # Add rank
+    leaderboard_res = []
+    for i, entry in enumerate(data_list[:limit], 1):
+        leaderboard_res.append({"rank": i, **entry})
+
+    return jsonify({
+        "success": True,
+        "leaderboard": leaderboard_res
+    })
 
 @tasks_bp.route('/api/v1/tasks/stats', methods=['GET'])
 def task_stats():
