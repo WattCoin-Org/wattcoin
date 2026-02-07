@@ -88,33 +88,112 @@ CORS(app, origins=[
 ])
 
 # =============================================================================
-# RATE LIMITING (Flask-Limiter)
+# RATE LIMITING (Flask-Limiter) - Enhanced with wallet-based limits
 # =============================================================================
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+# Configurable rate limits via environment variables
+RATE_LIMIT_DEFAULT = os.getenv('RATE_LIMIT_DEFAULT', '60 per minute')
+RATE_LIMIT_HOURLY = os.getenv('RATE_LIMIT_HOURLY', '1000 per hour')
+RATE_LIMIT_AUTHENTICATED = os.getenv('RATE_LIMIT_AUTHENTICATED', '300 per minute')
+RATE_LIMIT_STAKED = os.getenv('RATE_LIMIT_STAKED', '600 per minute')
+
+
+def get_rate_limit_key():
+    """
+    Get rate limit key based on wallet (if authenticated) or IP.
+    Authenticated/staked wallets get higher limits.
+    """
+    # Check for wallet in request
+    wallet = None
+    
+    # From JSON body
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        wallet = body.get('wallet')
+    
+    # From query params
+    if not wallet:
+        wallet = request.args.get('wallet')
+    
+    # From API key header
+    if not wallet:
+        api_key = request.headers.get('X-API-Key')
+        if api_key:
+            return f"apikey:{api_key[:16]}"
+    
+    if wallet:
+        return f"wallet:{wallet}"
+    
+    return get_remote_address()
+
+
+def get_wallet_rate_limit():
+    """
+    Dynamic rate limit based on wallet stake status.
+    Returns the appropriate limit string for Flask-Limiter.
+    """
+    key = get_rate_limit_key()
+    
+    # Staked wallets get highest limit
+    if key.startswith('wallet:'):
+        wallet = key.replace('wallet:', '')
+        try:
+            from api_reputation import get_reputation
+            rep = get_reputation(wallet)
+            if rep.get('staked_amount', 0) > 0:
+                return RATE_LIMIT_STAKED
+        except (ImportError, Exception):
+            pass
+        return RATE_LIMIT_AUTHENTICATED
+    
+    # API key users get authenticated limit
+    if key.startswith('apikey:'):
+        return RATE_LIMIT_AUTHENTICATED
+    
+    # Default public limit
+    return RATE_LIMIT_DEFAULT
+
+
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
     app=app,
-    key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    key_func=get_rate_limit_key,  # Use wallet/IP based key
+    default_limits=[RATE_LIMIT_HOURLY, RATE_LIMIT_DEFAULT],  # Configurable defaults
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
     headers_enabled=True,  # Add X-RateLimit-* headers to responses
 )
 
-# Custom rate limit error handler
+# Custom rate limit error handler with retry-after header
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
-        "error": "Rate limit exceeded",
+    retry_after = 60
+    if hasattr(e, 'description') and isinstance(e.description, str):
+        # Try to parse retry time from description
+        import re
+        match = re.search(r'(\d+)\s*second', e.description.lower())
+        if match:
+            retry_after = int(match.group(1))
+    
+    logger.warning(f"Rate limit exceeded: {get_rate_limit_key()} - {request.path}")
+    
+    response = jsonify({
+        "success": False,
+        "error": "rate_limit_exceeded",
+        "error_code": "RATE_LIMIT_EXCEEDED",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after,
+        "tip": "Authenticated wallets with staked WATT get higher rate limits."
+    })
+    response.status_code = 429
+    response.headers['Retry-After'] = str(retry_after)
+    return response
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info("Flask-Limiter initialized | default=%s hourly=%s auth=%s staked=%s",
+            RATE_LIMIT_DEFAULT, RATE_LIMIT_HOURLY, RATE_LIMIT_AUTHENTICATED, RATE_LIMIT_STAKED)
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
