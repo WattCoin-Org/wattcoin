@@ -103,7 +103,7 @@ def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
     client = Client(SOLANA_RPC)
     mint = Pubkey.from_string(WATT_MINT)
 
-    # Look up sender ATA via RPC
+    # Look up sender ATA via RPC (with fallback to derived ATA)
     sender_resp = requests.post(SOLANA_RPC, json={
         "jsonrpc": "2.0", "id": 1,
         "method": "getTokenAccountsByOwner",
@@ -113,7 +113,11 @@ def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
     if "result" in sender_resp and sender_resp["result"]["value"]:
         sender_ata = Pubkey.from_string(sender_resp["result"]["value"][0]["pubkey"])
     else:
-        raise RuntimeError("Escrow wallet has no WATT token account!")
+        # Fallback: derive ATA (handles RPC rate-limiting)
+        print(f"[ESCROW] RPC lookup empty for sender, using derived ATA", flush=True)
+        sender_ata = get_associated_token_address(
+            from_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
+        )
 
     # Look up recipient ATA — auto-create if missing
     create_ata_ix = None
@@ -808,7 +812,7 @@ def approve_solution(solution_id):
         treasury_error = None
         if fee_amount > 0 and TREASURY_WALLET:
             try:
-                time.sleep(2)  # Brief delay between TXs
+                time.sleep(5)  # Delay between TXs to avoid RPC rate-limiting
                 treasury_tx = send_watt_from_escrow(
                     TREASURY_WALLET, fee_amount,
                     memo=f"swarmsolve:fee:{solution_id}"
