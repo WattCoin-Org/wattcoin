@@ -51,7 +51,7 @@ MIN_SUBTASK_REWARD = 100  # Min reward per subtask
 DELEGATION_FEE_PCT = 5    # 5% coordinator fee to delegating agent
 VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'compute', 'other']
 VALID_WORKER_TYPES = ['agent', 'node', 'any']
-VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated']
+VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated', 'pending_review']
 
 
 # === Data Layer ===
@@ -138,21 +138,40 @@ def queue_payout(wallet, amount, task_id):
 
 # === AI Verification ===
 
-def ai_verify_submission(task, submission):
+def ai_verify_submission(task, submission, timeout=30):
     """
     Use AI to verify task completion quality.
-    Returns (score, feedback) tuple.
+    Returns (score, feedback, needs_review) tuple.
+    
+    Args:
+        task: Task dict with title, description, type, requirements
+        submission: Submission dict with result
+        timeout: Request timeout in seconds (default 30)
+    
+    Returns:
+        Tuple of (score: int, feedback: str, needs_review: bool)
+        - score: 0-10 verification score
+        - feedback: AI feedback or error message
+        - needs_review: True if all retries failed and task needs manual review
+    
+    Implements retry logic with exponential backoff:
+    - Retries up to 3 times on timeout or 5xx errors
+    - Backoff: 1s, 2s, 4s between retries
+    - Logs each retry attempt
+    - Returns needs_review=True if all retries fail
     """
-    try:
-        from openai import OpenAI
-        ai_key = os.getenv('AI_API_KEY')
-        if not ai_key:
-            logger.error("AI_API_KEY not set — cannot verify")
-            return 0, "AI verification unavailable"
-
-        client = OpenAI(api_key=ai_key, base_url="https://api.x.ai/v1")
-
-        verify_prompt = f"""You are a task verification AI for the WattCoin Agent Task Marketplace.
+    import time
+    import httpx
+    
+    MAX_RETRIES = 3
+    BACKOFF_SECONDS = [1, 2, 4]  # Exponential backoff
+    
+    ai_key = os.getenv('AI_API_KEY')
+    if not ai_key:
+        logger.error("AI_API_KEY not set — cannot verify")
+        return 0, "AI verification unavailable", True
+    
+    verify_prompt = f"""You are a task verification AI for the WattCoin Agent Task Marketplace.
 
 Review this task submission and score it 1-10.
 
@@ -174,31 +193,80 @@ Respond in this exact format:
 SCORE: <1-10>
 FEEDBACK: <brief explanation>"""
 
-        response = client.chat.completions.create(
-            model="grok-3",
-            messages=[{"role": "user", "content": verify_prompt}],
-            max_tokens=500
-        )
+    last_error = None
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            from openai import OpenAI
+            
+            # Create client with timeout
+            client = OpenAI(
+                api_key=ai_key, 
+                base_url="https://api.x.ai/v1",
+                timeout=timeout
+            )
 
-        content = response.choices[0].message.content
-        
-        # Parse score
-        score = 0
-        feedback = content
-        for line in content.split('\n'):
-            if line.strip().upper().startswith('SCORE:'):
-                try:
-                    score = int(line.split(':')[1].strip().split('/')[0].strip())
-                except (ValueError, IndexError):
-                    score = 0
-            elif line.strip().upper().startswith('FEEDBACK:'):
-                feedback = line.split(':', 1)[1].strip()
+            response = client.chat.completions.create(
+                model="grok-3",
+                messages=[{"role": "user", "content": verify_prompt}],
+                max_tokens=500
+            )
 
-        return min(max(score, 0), 10), feedback
+            # Validate response structure
+            if not response or not response.choices:
+                raise ValueError("Malformed response: no choices")
+            
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Malformed response: empty content")
+            
+            # Parse score
+            score = 0
+            feedback = content
+            for line in content.split('\n'):
+                if line.strip().upper().startswith('SCORE:'):
+                    try:
+                        score_str = line.split(':')[1].strip().split('/')[0].strip()
+                        score = int(score_str)
+                    except (ValueError, IndexError):
+                        logger.warning("Could not parse score from line: %s", line)
+                        score = 0
+                elif line.strip().upper().startswith('FEEDBACK:'):
+                    feedback = line.split(':', 1)[1].strip()
 
-    except Exception as e:
-        logger.error("AI verification failed: %s", str(e))
-        return 0, f"Verification error: {str(e)}"
+            logger.info("AI verification success | attempt=%d score=%d", attempt + 1, score)
+            return min(max(score, 0), 10), feedback, False
+
+        except Exception as e:
+            last_error = str(e)
+            error_type = type(e).__name__
+            
+            # Check if it's a retryable error (timeout or 5xx)
+            is_timeout = 'timeout' in error_type.lower() or 'timeout' in last_error.lower()
+            is_5xx = '500' in last_error or '502' in last_error or '503' in last_error or '504' in last_error
+            is_network_error = 'connection' in last_error.lower() or 'network' in last_error.lower()
+            
+            is_retryable = is_timeout or is_5xx or is_network_error
+            
+            if is_retryable and attempt < MAX_RETRIES - 1:
+                backoff = BACKOFF_SECONDS[attempt]
+                logger.warning(
+                    "AI verification retry | attempt=%d error=%s backoff=%ds",
+                    attempt + 1, error_type, backoff
+                )
+                time.sleep(backoff)
+                continue
+            else:
+                # Non-retryable error or max retries reached
+                logger.error(
+                    "AI verification failed | attempt=%d error=%s message=%s",
+                    attempt + 1, error_type, last_error
+                )
+                break
+    
+    # All retries exhausted
+    logger.error("AI verification exhausted all retries | error=%s", last_error)
+    return 0, f"Verification failed after {MAX_RETRIES} attempts: {last_error}", True
 
 
 # === Expiration Check ===
@@ -561,11 +629,41 @@ def verify_task(task_id):
     if task.get("status") != "submitted":
         return jsonify({"success": False, "error": f"task is {task.get('status')}, not submitted"}), 409
 
-    # Run AI verification
+    # Run AI verification with retry logic
     submission = task.get("submission", {})
-    score, feedback = ai_verify_submission(task, submission)
+    score, feedback, needs_review = ai_verify_submission(task, submission)
 
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Handle case where all retries failed - set to pending_review
+    if needs_review:
+        task["status"] = "pending_review"
+        task["verification"] = {
+            "score": score,
+            "feedback": feedback,
+            "threshold": VERIFY_THRESHOLD,
+            "attempted_at": now,
+            "needs_manual_review": True
+        }
+        save_tasks(data)
+        
+        logger.warning("task pending review | id=%s reason=%s", task_id, feedback)
+        
+        _notify_discord(
+            "⚠️ Task Needs Manual Review",
+            f"**{task.get('title', 'Unknown')}**\nAI verification failed after retries.",
+            color=0xFFA500,
+            fields={"Task ID": task_id, "Reason": feedback[:100]}
+        )
+        
+        return jsonify({
+            "success": False,
+            "task_id": task_id,
+            "status": "pending_review",
+            "error": "AI verification unavailable - task queued for manual review",
+            "feedback": feedback
+        }), 503
+    
     task["verification"] = {
         "score": score,
         "feedback": feedback,
