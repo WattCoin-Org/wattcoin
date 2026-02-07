@@ -21,8 +21,11 @@ import os
 import json
 import hmac
 import hashlib
+import logging
+import time
+import uuid
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 
 from pr_security import (
     verify_github_signature,
@@ -36,6 +39,92 @@ from pr_security import (
 )
 
 webhooks_bp = Blueprint('webhooks', __name__)
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+LOGGER_NAME = "wattcoin.webhooks"
+logger = logging.getLogger(LOGGER_NAME)
+
+if not logger.handlers:
+    logger.setLevel(os.getenv("WEBHOOK_LOG_LEVEL", "INFO"))
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
+def log_json(level, message, **fields):
+    payload = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "level": level,
+        "message": message,
+        **fields
+    }
+    logger.log(getattr(logging, level, logging.INFO), json.dumps(payload, ensure_ascii=False))
+
+
+def get_request_id():
+    if hasattr(g, "request_id") and g.request_id:
+        return g.request_id
+    return None
+
+
+@webhooks_bp.before_request
+def _webhooks_before_request():
+    g.request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    g.start_time = time.time()
+
+
+@webhooks_bp.after_request
+def _webhooks_after_request(response):
+    try:
+        duration_ms = int((time.time() - g.start_time) * 1000)
+    except Exception:
+        duration_ms = None
+
+    log_json(
+        "INFO",
+        "request_completed",
+        request_id=get_request_id(),
+        method=request.method,
+        path=request.path,
+        status=response.status_code,
+        duration_ms=duration_ms,
+        ip=request.remote_addr,
+        event_type=request.headers.get("X-GitHub-Event"),
+    )
+
+    response.headers["X-Request-ID"] = get_request_id() or ""
+    return response
+
+
+def request_with_retries(method, url, **kwargs):
+    '''HTTP request with timeout + retry + exponential backoff.'''
+    import requests
+
+    max_retries = int(os.getenv("WEBHOOK_MAX_RETRIES", "3"))
+    backoff = float(os.getenv("WEBHOOK_RETRY_BACKOFF", "1"))
+    timeout = kwargs.pop("timeout", 15)
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.request(method, url, timeout=timeout, **kwargs)
+            return resp, None
+        except Exception as e:
+            log_json(
+                "WARNING",
+                "http_request_failed",
+                request_id=get_request_id(),
+                url=url,
+                method=method,
+                attempt=attempt,
+                error=str(e),
+            )
+            if attempt == max_retries:
+                return None, e
+            time.sleep(backoff * (2 ** (attempt - 1)))
 
 # =============================================================================
 # CONFIG
@@ -272,16 +361,25 @@ def get_bounty_amount(issue_number):
     Returns: amount (int) or None
     """
     import re
-    import requests
     
     try:
         url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}"
-        resp = requests.get(url, headers=github_headers(), timeout=10)
+        resp, err = request_with_retries("GET", url, headers=github_headers(), timeout=10)
         
-        if resp.status_code != 200:
+        if err or not resp:
+            log_json("ERROR", "github_issue_fetch_failed", request_id=get_request_id(), issue_number=issue_number, error=str(err))
             return None
         
-        issue = resp.json()
+        if resp.status_code != 200:
+            log_json("WARNING", "github_issue_fetch_non_200", request_id=get_request_id(), issue_number=issue_number, status=resp.status_code)
+            return None
+        
+        try:
+            issue = resp.json()
+        except Exception as e:
+            log_json("ERROR", "github_issue_fetch_invalid_json", request_id=get_request_id(), issue_number=issue_number, error=str(e))
+            return None
+
         title = issue.get("title", "")
         
         # Extract amount like [BOUNTY: 100,000 WATT]
@@ -290,26 +388,30 @@ def get_bounty_amount(issue_number):
             return int(match.group(1).replace(',', ''))
         
         return None
-    except:
+    except Exception as e:
+        log_json("ERROR", "github_issue_fetch_exception", request_id=get_request_id(), issue_number=issue_number, error=str(e))
         return None
 
 def post_github_comment(issue_number, comment):
     """Post a comment on a GitHub issue/PR."""
-    import requests
-    
     if not GITHUB_TOKEN:
         return False
     
     try:
         url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}/comments"
-        resp = requests.post(
+        resp, err = request_with_retries(
+            "POST",
             url,
             headers=github_headers(),
             json={"body": comment},
             timeout=15
         )
+        if err or not resp:
+            log_json("ERROR", "github_comment_failed", request_id=get_request_id(), issue_number=issue_number, error=str(err))
+            return False
         return resp.status_code in [200, 201]
-    except:
+    except Exception as e:
+        log_json("ERROR", "github_comment_exception", request_id=get_request_id(), issue_number=issue_number, error=str(e))
         return False
 
 # =============================================================================
@@ -322,8 +424,6 @@ def trigger_ai_review(pr_number):
     Calls the review endpoint internally.
     Returns: (review_result, error)
     """
-    import requests
-    
     try:
         # Call internal review endpoint
         # Use module-level BASE_URL constant (no localhost default!)
@@ -332,30 +432,35 @@ def trigger_ai_review(pr_number):
         # Review endpoint expects pr_url, not pr_number
         pr_url = f"https://github.com/{REPO}/pull/{pr_number}"
         
+        log_json("INFO", "review_call_started", request_id=get_request_id(), pr_number=pr_number, url=review_url)
 
-        # Log the internal call attempt
-        print(f"[WEBHOOK] Calling internal review endpoint: {review_url} for PR #{pr_number}", flush=True)
-
-        resp = requests.post(
+        resp, err = request_with_retries(
+            "POST",
             review_url,
             json={"pr_url": pr_url},
             headers={"Content-Type": "application/json"},
             timeout=60
         )
         
+        if err or not resp:
+            log_json("ERROR", "review_call_failed", request_id=get_request_id(), pr_number=pr_number, error=str(err))
+            return None, f"Review error: {err}"
 
-        # Log response status
-        print(f"[WEBHOOK] Review call returned {resp.status_code}", flush=True)
+        log_json("INFO", "review_call_completed", request_id=get_request_id(), pr_number=pr_number, status=resp.status_code)
         if resp.status_code != 200:
-            print(f"[WEBHOOK] Error response: {resp.text[:500]}", flush=True)
+            log_json("WARNING", "review_call_non_200", request_id=get_request_id(), pr_number=pr_number, status=resp.status_code, response=resp.text[:500])
 
         if resp.status_code == 200:
-            return resp.json(), None
+            try:
+                return resp.json(), None
+            except Exception as e:
+                log_json("ERROR", "review_call_invalid_json", request_id=get_request_id(), pr_number=pr_number, error=str(e))
+                return None, f"Review error: invalid json"
         else:
             return None, f"Review failed: {resp.status_code}"
     
     except Exception as e:
-        print(f"[WEBHOOK] Exception calling review: {e}", flush=True)
+        log_json("ERROR", "review_call_exception", request_id=get_request_id(), pr_number=pr_number, error=str(e))
         return None, f"Review error: {e}"
 
 def auto_merge_pr(pr_number, review_score):
@@ -363,11 +468,10 @@ def auto_merge_pr(pr_number, review_score):
     Auto-merge a PR. Threshold checks are handled by should_auto_merge() in the merit system.
     Returns: (success, error)
     """
-    import requests
-    
     try:
         url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
-        resp = requests.put(
+        resp, err = request_with_retries(
+            "PUT",
             url,
             headers=github_headers(),
             json={
@@ -378,12 +482,18 @@ def auto_merge_pr(pr_number, review_score):
             timeout=15
         )
         
+        if err or not resp:
+            log_json("ERROR", "merge_call_failed", request_id=get_request_id(), pr_number=pr_number, error=str(err))
+            return False, f"Merge error: {err}"
+
         if resp.status_code == 200:
             return True, None
         else:
+            log_json("WARNING", "merge_call_non_200", request_id=get_request_id(), pr_number=pr_number, status=resp.status_code, response=resp.text[:500])
             return False, f"Merge failed: {resp.status_code} - {resp.text}"
     
     except Exception as e:
+        log_json("ERROR", "merge_call_exception", request_id=get_request_id(), pr_number=pr_number, error=str(e))
         return False, f"Merge error: {e}"
 
 def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None):
@@ -434,7 +544,6 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
         # Look up SENDER's token account
         print(f"[PAYMENT] Looking up sender's WATT token account...", flush=True)
         try:
-            import requests
             sender_rpc_payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -446,7 +555,9 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
                 ]
             }
             
-            sender_rpc_response = requests.post(SOLANA_RPC, json=sender_rpc_payload, timeout=10)
+            sender_rpc_response, err = request_with_retries("POST", SOLANA_RPC, json=sender_rpc_payload, timeout=10)
+            if err or not sender_rpc_response:
+                raise RuntimeError(err)
             sender_rpc_data = sender_rpc_response.json()
             
             if "result" in sender_rpc_data and sender_rpc_data["result"]["value"]:
@@ -478,7 +589,9 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
                 ]
             }
             
-            rpc_response = requests.post(SOLANA_RPC, json=rpc_payload, timeout=10)
+            rpc_response, err = request_with_retries("POST", SOLANA_RPC, json=rpc_payload, timeout=10)
+            if err or not rpc_response:
+                raise RuntimeError(err)
             rpc_data = rpc_response.json()
             
             if "result" in rpc_data and rpc_data["result"]["value"]:
@@ -651,12 +764,23 @@ def handle_pr_review_trigger(pr_number, action):
     # If review passed threshold, check merit system before merging
     if passed and score >= 7:  # Minimum possible threshold (gold tier)
         # Get PR author
-        import requests as req
         try:
-            pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
-                            headers=github_headers(), timeout=10)
-            pr_author = pr_resp.json().get("user", {}).get("login", "unknown") if pr_resp.status_code == 200 else "unknown"
-        except:
+            pr_resp, err = request_with_retries(
+                "GET",
+                f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
+                headers=github_headers(),
+                timeout=10
+            )
+            if err or not pr_resp:
+                log_json("ERROR", "pr_author_fetch_failed", request_id=get_request_id(), pr_number=pr_number, error=str(err))
+                pr_author = "unknown"
+            elif pr_resp.status_code == 200:
+                pr_author = pr_resp.json().get("user", {}).get("login", "unknown")
+            else:
+                log_json("WARNING", "pr_author_fetch_non_200", request_id=get_request_id(), pr_number=pr_number, status=pr_resp.status_code)
+                pr_author = "unknown"
+        except Exception as e:
+            log_json("ERROR", "pr_author_fetch_exception", request_id=get_request_id(), pr_number=pr_number, error=str(e))
             pr_author = "unknown"
         
         # Merit system gate
@@ -777,28 +901,45 @@ def github_webhook():
     Expected events:
     - pull_request (closed + merged)
     """
-    # Verify signature if secret is configured
-    if GITHUB_WEBHOOK_SECRET:
-        signature = request.headers.get('X-Hub-Signature-256', '')
-        payload_body = request.get_data()
+    try:
+        # Verify signature if secret is configured
+        if GITHUB_WEBHOOK_SECRET:
+            signature = request.headers.get('X-Hub-Signature-256')
+            payload_body = request.get_data() or b""
+            
+            if not signature:
+                log_security_event("webhook_missing_signature", {
+                    "ip": request.remote_addr,
+                    "headers": dict(request.headers)
+                })
+                log_json("WARNING", "webhook_missing_signature", request_id=get_request_id(), ip=request.remote_addr)
+                return jsonify({"error": "Missing signature"}), 403
+
+            if not verify_github_signature(payload_body, signature, GITHUB_WEBHOOK_SECRET):
+                log_security_event("webhook_invalid_signature", {
+                    "ip": request.remote_addr,
+                    "headers": dict(request.headers)
+                })
+                log_json("WARNING", "webhook_invalid_signature", request_id=get_request_id(), ip=request.remote_addr)
+                return jsonify({"error": "Invalid signature"}), 403
         
-        if not verify_github_signature(payload_body, signature, GITHUB_WEBHOOK_SECRET):
-            log_security_event("webhook_invalid_signature", {
-                "ip": request.remote_addr,
-                "headers": dict(request.headers)
-            })
-            return jsonify({"error": "Invalid signature"}), 403
-    
-    # Parse event
-    event_type = request.headers.get('X-GitHub-Event')
-    payload = request.get_json()
-    
-    if not payload:
-        return jsonify({"error": "No payload"}), 400
-    
-    # Only handle pull_request events
-    if event_type != 'pull_request':
-        return jsonify({"message": f"Ignoring event type: {event_type}"}), 200
+        # Parse event
+        event_type = request.headers.get('X-GitHub-Event')
+        if not event_type:
+            log_json("WARNING", "webhook_missing_event_type", request_id=get_request_id(), ip=request.remote_addr)
+            return jsonify({"error": "Missing event type"}), 400
+
+        payload = request.get_json(silent=True)
+        if payload is None:
+            log_json("WARNING", "webhook_invalid_json", request_id=get_request_id(), ip=request.remote_addr)
+            return jsonify({"error": "Invalid JSON payload"}), 400
+        
+        # Only handle pull_request events
+        if event_type != 'pull_request':
+            return jsonify({"message": f"Ignoring event type: {event_type}"}), 200
+    except Exception as e:
+        log_json("ERROR", "webhook_parse_exception", request_id=get_request_id(), error=str(e))
+        return jsonify({"error": "Malformed payload"}), 400
     
     action = payload.get("action")
     pr = payload.get("pull_request", {})
@@ -971,18 +1112,20 @@ def check_payment_already_sent(pr_number, recipient_wallet, amount):
     Looks at bounty wallet's recent TXs for a memo matching this PR.
     Returns tx_signature if found, None otherwise.
     """
-    import requests as req
     try:
         bounty_wallet = os.getenv("BOUNTY_WALLET_ADDRESS", "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF")
         rpc_url = "https://api.mainnet-beta.solana.com"
         
         # Get recent signatures from bounty wallet (last 10)
-        resp = req.post(rpc_url, json={
+        resp, err = request_with_retries("POST", rpc_url, json={
             "jsonrpc": "2.0", "id": 1,
             "method": "getSignaturesForAddress",
             "params": [bounty_wallet, {"limit": 10}]
         }, timeout=10)
         
+        if err or not resp:
+            raise RuntimeError(err)
+
         sigs = resp.json().get("result", [])
         
         for sig_info in sigs:
@@ -991,12 +1134,15 @@ def check_payment_already_sent(pr_number, recipient_wallet, amount):
                 continue
             
             # Fetch full TX to check memo
-            tx_resp = req.post(rpc_url, json={
+            tx_resp, err = request_with_retries("POST", rpc_url, json={
                 "jsonrpc": "2.0", "id": 1,
                 "method": "getTransaction",
                 "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
             }, timeout=10)
             
+            if err or not tx_resp:
+                raise RuntimeError(err)
+
             tx_data = tx_resp.json().get("result")
             if not tx_data:
                 continue
