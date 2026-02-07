@@ -128,6 +128,7 @@ from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get
 from api_pr_review import pr_review_bp
 from api_webhooks import webhooks_bp, process_payment_queue, load_reputation_data
 from api_wsi import wsi_bp
+from data_backup import backup_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(bounties_bp)
 app.register_blueprint(llm_bp)
@@ -137,6 +138,7 @@ app.register_blueprint(nodes_bp)
 app.register_blueprint(pr_review_bp)
 app.register_blueprint(webhooks_bp)
 app.register_blueprint(wsi_bp)
+app.register_blueprint(backup_bp)
 
 # Apply endpoint-specific rate limits after blueprint registration
 limiter.limit("10 per minute")(llm_bp)  # LLM queries are expensive - strict limit
