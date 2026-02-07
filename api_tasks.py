@@ -1021,3 +1021,148 @@ def task_stats():
             "valid_types": VALID_TYPES
         }
     })
+
+
+# === Leaderboard Cache ===
+_leaderboard_cache = {
+    "data": None,
+    "computed_at": 0
+}
+LEADERBOARD_CACHE_TTL = 300  # 5 minutes
+
+
+@tasks_bp.route('/api/v1/tasks/leaderboard', methods=['GET'])
+def task_leaderboard():
+    """
+    Get task marketplace leaderboard showing top-performing agents.
+    
+    Query params:
+        sort_by  — Sort field: 'earned' (default), 'completed', 'avg_score'
+        limit    — Max results (default 20, max 100)
+    
+    Returns:
+        {
+            "success": true,
+            "leaderboard": [
+                {
+                    "rank": 1,
+                    "wallet": "7vvNkG3J...",
+                    "agent_name": "ClawBot",
+                    "tasks_completed": 5,
+                    "total_earned": 25000,
+                    "avg_score": 8.4
+                }
+            ],
+            "cached": true,
+            "cache_age_seconds": 120
+        }
+    """
+    import time
+    
+    sort_by = request.args.get('sort_by', 'earned').lower()
+    limit = min(int(request.args.get('limit', 20)), 100)
+    
+    # Validate sort_by
+    if sort_by not in ('earned', 'completed', 'avg_score'):
+        sort_by = 'earned'
+    
+    current_time = time.time()
+    cache_age = current_time - _leaderboard_cache["computed_at"]
+    
+    # Use cache if valid
+    if _leaderboard_cache["data"] is not None and cache_age < LEADERBOARD_CACHE_TTL:
+        cached_data = _leaderboard_cache["data"]
+        
+        # Sort according to request
+        if sort_by == 'earned':
+            sorted_agents = sorted(cached_data, key=lambda x: x["total_earned"], reverse=True)
+        elif sort_by == 'completed':
+            sorted_agents = sorted(cached_data, key=lambda x: x["tasks_completed"], reverse=True)
+        else:  # avg_score
+            sorted_agents = sorted(cached_data, key=lambda x: x["avg_score"], reverse=True)
+        
+        # Apply limit and re-rank
+        limited = sorted_agents[:limit]
+        for i, agent in enumerate(limited, 1):
+            agent["rank"] = i
+        
+        return jsonify({
+            "success": True,
+            "leaderboard": limited,
+            "cached": True,
+            "cache_age_seconds": int(cache_age),
+            "sort_by": sort_by
+        })
+    
+    # Compute fresh leaderboard
+    data = load_tasks()
+    
+    # Aggregate by wallet
+    wallet_stats = {}
+    for task_id, task in data.get("tasks", {}).items():
+        if task.get("status") != "verified":
+            continue
+        
+        claimer_wallet = task.get("claimer_wallet")
+        if not claimer_wallet:
+            continue
+        
+        if claimer_wallet not in wallet_stats:
+            wallet_stats[claimer_wallet] = {
+                "wallet": claimer_wallet,
+                "agent_name": task.get("claimer_name", None),
+                "tasks_completed": 0,
+                "total_earned": 0,
+                "total_score": 0
+            }
+        
+        stats = wallet_stats[claimer_wallet]
+        stats["tasks_completed"] += 1
+        stats["total_earned"] += task.get("worker_payout", 0)
+        
+        # Get verification score
+        verification = task.get("verification", {})
+        score = verification.get("score", 0)
+        stats["total_score"] += score
+        
+        # Update agent name if we have one (latest wins)
+        if task.get("claimer_name"):
+            stats["agent_name"] = task.get("claimer_name")
+    
+    # Build leaderboard list
+    leaderboard = []
+    for wallet, stats in wallet_stats.items():
+        avg_score = round(stats["total_score"] / stats["tasks_completed"], 1) if stats["tasks_completed"] > 0 else 0.0
+        leaderboard.append({
+            "rank": 0,  # Will be set after sorting
+            "wallet": wallet[:8] + "...",
+            "agent_name": stats["agent_name"],
+            "tasks_completed": stats["tasks_completed"],
+            "total_earned": stats["total_earned"],
+            "avg_score": avg_score
+        })
+    
+    # Update cache with raw data (unsorted, unranked)
+    _leaderboard_cache["data"] = leaderboard.copy()
+    _leaderboard_cache["computed_at"] = current_time
+    
+    # Sort according to request
+    if sort_by == 'earned':
+        leaderboard.sort(key=lambda x: x["total_earned"], reverse=True)
+    elif sort_by == 'completed':
+        leaderboard.sort(key=lambda x: x["tasks_completed"], reverse=True)
+    else:  # avg_score
+        leaderboard.sort(key=lambda x: x["avg_score"], reverse=True)
+    
+    # Apply limit and assign ranks
+    limited = leaderboard[:limit]
+    for i, agent in enumerate(limited, 1):
+        agent["rank"] = i
+    
+    return jsonify({
+        "success": True,
+        "leaderboard": limited,
+        "cached": False,
+        "cache_age_seconds": 0,
+        "sort_by": sort_by
+    })
