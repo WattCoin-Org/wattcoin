@@ -51,7 +51,7 @@ MIN_SUBTASK_REWARD = 100  # Min reward per subtask
 DELEGATION_FEE_PCT = 5    # 5% coordinator fee to delegating agent
 VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'compute', 'other']
 VALID_WORKER_TYPES = ['agent', 'node', 'any']
-VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated']
+VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated', 'pending_review']
 
 
 # === Data Layer ===
@@ -138,21 +138,52 @@ def queue_payout(wallet, amount, task_id):
 
 # === AI Verification ===
 
-def ai_verify_submission(task, submission):
+import time
+import httpx
+
+# === AI Retry Configuration ===
+AI_MAX_RETRIES = 3
+AI_TIMEOUT_SECONDS = 30
+AI_RETRY_BACKOFF = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
+
+
+def _is_retryable_error(exception):
+    """Check if error is retryable (timeout, 5xx, network errors)."""
+    # Timeout errors
+    if isinstance(exception, (TimeoutError, httpx.TimeoutException)):
+        return True
+    # Check for HTTP 5xx status codes
+    if hasattr(exception, 'status_code'):
+        return 500 <= exception.status_code < 600
+    if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
+        return 500 <= exception.response.status_code < 600
+    # Network/connection errors
+    error_str = str(exception).lower()
+    if any(x in error_str for x in ['timeout', 'connection', 'network', '502', '503', '504', '500']):
+        return True
+    return False
+
+
+def ai_verify_submission(task, submission, timeout=AI_TIMEOUT_SECONDS):
     """
     Use AI to verify task completion quality.
-    Returns (score, feedback) tuple.
+    Returns (score, feedback, needs_review) tuple.
+    
+    Implements:
+    - Retry up to 3 times on timeout or 5xx errors
+    - Exponential backoff (1s, 2s, 4s)
+    - Logs each retry attempt
+    - Returns needs_review=True if all retries fail
+    - Handles network errors, JSON parse errors, malformed responses
     """
-    try:
-        from openai import OpenAI
-        ai_key = os.getenv('AI_API_KEY')
-        if not ai_key:
-            logger.error("AI_API_KEY not set — cannot verify")
-            return 0, "AI verification unavailable"
+    from openai import OpenAI
+    
+    ai_key = os.getenv('AI_API_KEY')
+    if not ai_key:
+        logger.error("AI_API_KEY not set — cannot verify")
+        return 0, "AI verification unavailable", True
 
-        client = OpenAI(api_key=ai_key, base_url="https://api.x.ai/v1")
-
-        verify_prompt = f"""You are a task verification AI for the WattCoin Agent Task Marketplace.
+    verify_prompt = f"""You are a task verification AI for the WattCoin Agent Task Marketplace.
 
 Review this task submission and score it 1-10.
 
@@ -174,31 +205,74 @@ Respond in this exact format:
 SCORE: <1-10>
 FEEDBACK: <brief explanation>"""
 
-        response = client.chat.completions.create(
-            model="grok-3",
-            messages=[{"role": "user", "content": verify_prompt}],
-            max_tokens=500
-        )
+    last_error = None
+    
+    for attempt in range(AI_MAX_RETRIES):
+        try:
+            client = OpenAI(
+                api_key=ai_key, 
+                base_url="https://api.x.ai/v1",
+                timeout=timeout
+            )
 
-        content = response.choices[0].message.content
-        
-        # Parse score
-        score = 0
-        feedback = content
-        for line in content.split('\n'):
-            if line.strip().upper().startswith('SCORE:'):
-                try:
-                    score = int(line.split(':')[1].strip().split('/')[0].strip())
-                except (ValueError, IndexError):
-                    score = 0
-            elif line.strip().upper().startswith('FEEDBACK:'):
-                feedback = line.split(':', 1)[1].strip()
+            response = client.chat.completions.create(
+                model="grok-3",
+                messages=[{"role": "user", "content": verify_prompt}],
+                max_tokens=500
+            )
 
-        return min(max(score, 0), 10), feedback
+            # Handle malformed response
+            if not response or not response.choices:
+                raise ValueError("Empty or malformed API response")
+            
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Empty response content")
+            
+            # Parse score
+            score = 0
+            feedback = content
+            for line in content.split('\n'):
+                if line.strip().upper().startswith('SCORE:'):
+                    try:
+                        score_str = line.split(':')[1].strip().split('/')[0].strip()
+                        score = int(score_str)
+                    except (ValueError, IndexError) as e:
+                        logger.warning("Failed to parse score from line '%s': %s", line, e)
+                        score = 0
+                elif line.strip().upper().startswith('FEEDBACK:'):
+                    feedback = line.split(':', 1)[1].strip()
 
-    except Exception as e:
-        logger.error("AI verification failed: %s", str(e))
-        return 0, f"Verification error: {str(e)}"
+            logger.info("AI verification successful on attempt %d | score=%d", attempt + 1, score)
+            return min(max(score, 0), 10), feedback, False
+
+        except json.JSONDecodeError as e:
+            last_error = e
+            logger.error("AI verification JSON parse error on attempt %d: %s", attempt + 1, str(e))
+            # JSON parse errors are retryable (might be transient API issue)
+            if attempt < AI_MAX_RETRIES - 1:
+                backoff = AI_RETRY_BACKOFF[attempt]
+                logger.info("Retrying in %ds...", backoff)
+                time.sleep(backoff)
+                continue
+            
+        except Exception as e:
+            last_error = e
+            if _is_retryable_error(e):
+                logger.warning("AI verification retryable error on attempt %d: %s", attempt + 1, str(e))
+                if attempt < AI_MAX_RETRIES - 1:
+                    backoff = AI_RETRY_BACKOFF[attempt]
+                    logger.info("Retrying in %ds...", backoff)
+                    time.sleep(backoff)
+                    continue
+            else:
+                # Non-retryable error, fail immediately
+                logger.error("AI verification non-retryable error: %s", str(e))
+                return 0, f"Verification error: {str(e)}", True
+
+    # All retries exhausted
+    logger.error("AI verification failed after %d attempts. Last error: %s", AI_MAX_RETRIES, str(last_error))
+    return 0, f"Verification failed after {AI_MAX_RETRIES} attempts: {str(last_error)}", True
 
 
 # === Expiration Check ===
@@ -561,18 +635,42 @@ def verify_task(task_id):
     if task.get("status") != "submitted":
         return jsonify({"success": False, "error": f"task is {task.get('status')}, not submitted"}), 409
 
-    # Run AI verification
+    # Run AI verification with retry logic
     submission = task.get("submission", {})
-    score, feedback = ai_verify_submission(task, submission)
+    score, feedback, needs_review = ai_verify_submission(task, submission)
 
     now = datetime.now(timezone.utc).isoformat()
     task["verification"] = {
         "score": score,
         "feedback": feedback,
         "threshold": VERIFY_THRESHOLD,
-        "verified_at": now
+        "verified_at": now,
+        "needs_manual_review": needs_review
     }
     task["verified_at"] = now
+
+    # If AI verification failed completely, set to pending_review instead of auto-rejecting
+    if needs_review:
+        task["status"] = "pending_review"
+        save_tasks(data)
+        
+        logger.warning("task pending review | id=%s reason=%s", task_id, feedback)
+        
+        _notify_discord(
+            "⚠️ Task Needs Manual Review",
+            f"**{task.get('title', 'Unknown')}**\nAI verification failed after retries.",
+            color=0xFFAA00,
+            fields={"Task ID": task_id, "Reason": feedback[:100]}
+        )
+        
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "status": "pending_review",
+            "score": score,
+            "feedback": feedback,
+            "message": "AI verification failed. Task queued for manual review."
+        })
 
     if score >= VERIFY_THRESHOLD:
         # === PASSED — Pay the worker ===
