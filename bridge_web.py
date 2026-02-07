@@ -88,33 +88,26 @@ CORS(app, origins=[
 ])
 
 # =============================================================================
-# RATE LIMITING (Flask-Limiter)
+# RATE LIMITING (Flask-Limiter) - Enhanced per bounty #88
 # =============================================================================
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
-# Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
-    storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
-    storage_options={"socket_connect_timeout": 30},
-    strategy="fixed-window",
-    headers_enabled=True,  # Add X-RateLimit-* headers to responses
+from rate_limiter import (
+    create_rate_limiter,
+    get_dynamic_limit,
+    RATE_LIMIT_DEFAULT,
+    RATE_LIMIT_AUTHENTICATED,
+    SCRAPE_LIMIT,
+    LLM_LIMIT,
+    HEALTH_LIMIT,
 )
 
-# Custom rate limit error handler
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
-        "error": "Rate limit exceeded",
-        "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+# Initialize enhanced rate limiter with:
+# - Default: 60 requests/minute per IP (configurable via RATE_LIMIT_DEFAULT)
+# - Higher limits for authenticated/staked wallets
+# - X-RateLimit-* headers enabled
+# - 429 responses with Retry-After header
+limiter = create_rate_limiter(app)
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info(f"Flask-Limiter initialized with default limit: {RATE_LIMIT_DEFAULT}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -770,6 +763,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(SCRAPE_LIMIT)  # 30 per minute (configurable via RATE_LIMIT_SCRAPE)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1146,6 +1140,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit(LLM_LIMIT)  # 20 per minute (configurable via RATE_LIMIT_LLM)
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1345,6 +1340,7 @@ def proxy_moltbook():
 
 
 @app.route('/health')
+@limiter.limit(HEALTH_LIMIT)  # 120 per minute (configurable via RATE_LIMIT_HEALTH)
 def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
@@ -1359,6 +1355,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(get_dynamic_limit)  # Dynamic based on auth level
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
