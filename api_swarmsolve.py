@@ -16,7 +16,7 @@ Flow:
     4. Backend verifies TX on-chain, creates GitHub issue with solution-bounty label
     5. Agents compete — first merged PR wins
     6. Customer calls /approve with approval_token + pr_number
-    7. Backend releases 95% to winner via payment queue, 5% to treasury
+    7. Backend releases 95% to winner from escrow, 5% to treasury
 """
 
 import os
@@ -25,9 +25,20 @@ import time
 import uuid
 import re
 import hashlib
+import struct
 import requests
+import base58
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
+from solana.rpc.api import Client
+from solders.transaction import Transaction
+from solders.message import Message
+from solders.pubkey import Pubkey
+from solders.instruction import Instruction, AccountMeta
+from solders.hash import Hash
+from solders.keypair import Keypair
+from spl.token.instructions import get_associated_token_address
+from spl.token.constants import TOKEN_2022_PROGRAM_ID
 
 from pr_security import load_json_data, save_json_data
 
@@ -49,8 +60,101 @@ FEE_PERCENT = 5
 TX_MAX_AGE_SECONDS = 1800  # 30 min
 
 ESCROW_WALLET = os.getenv("ESCROW_WALLET_ADDRESS", "")
+ESCROW_WALLET_PRIVATE_KEY = os.getenv("ESCROW_WALLET_PRIVATE_KEY", "")
 TREASURY_WALLET = os.getenv("TREASURY_WALLET_ADDRESS", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+WATT_DECIMALS = 6
+
+
+# =============================================================================
+# ESCROW PAYMENT
+# =============================================================================
+
+def get_escrow_wallet():
+    """Load escrow wallet keypair from env var."""
+    if not ESCROW_WALLET_PRIVATE_KEY:
+        raise RuntimeError("ESCROW_WALLET_PRIVATE_KEY not set")
+    key_bytes = base58.b58decode(ESCROW_WALLET_PRIVATE_KEY)
+    return Keypair.from_bytes(key_bytes[:64])
+
+
+def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
+    """
+    Send WATT from escrow wallet to recipient with optional memo.
+    Returns transaction signature.
+    """
+    print(f"[ESCROW] Sending {amount:,} WATT to {recipient[:8]}...", flush=True)
+    if memo:
+        print(f"[ESCROW] Memo: {memo}", flush=True)
+
+    wallet = get_escrow_wallet()
+    from_pubkey = wallet.pubkey()
+
+    try:
+        to_pubkey = Pubkey.from_string(recipient)
+    except Exception as e:
+        raise ValueError(f"Invalid recipient address: {e}")
+
+    client = Client(SOLANA_RPC)
+    mint = Pubkey.from_string(WATT_MINT)
+
+    from_ata = get_associated_token_address(
+        from_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
+    )
+    to_ata = get_associated_token_address(
+        to_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
+    )
+
+    # Build transfer instruction
+    amount_raw = amount * (10 ** WATT_DECIMALS)
+    data = bytes([3]) + struct.pack("<Q", amount_raw)
+
+    transfer_ix = Instruction(
+        program_id=TOKEN_2022_PROGRAM_ID,
+        accounts=[
+            AccountMeta(pubkey=from_ata, is_signer=False, is_writable=True),
+            AccountMeta(pubkey=mint, is_signer=False, is_writable=False),
+            AccountMeta(pubkey=to_ata, is_signer=False, is_writable=True),
+            AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
+        ],
+        data=data
+    )
+
+    instructions = []
+
+    if memo:
+        memo_program = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
+        memo_ix = Instruction(
+            program_id=memo_program,
+            accounts=[
+                AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
+            ],
+            data=memo.encode('utf-8')
+        )
+        instructions.append(memo_ix)
+
+    instructions.append(transfer_ix)
+
+    blockhash_resp = client.get_latest_blockhash()
+    recent_blockhash = Hash.from_string(str(blockhash_resp.value.blockhash))
+
+    msg = Message.new_with_blockhash(
+        instructions,
+        from_pubkey,
+        recent_blockhash
+    )
+
+    signature = wallet.sign_message(msg.to_bytes())
+    tx = Transaction([signature], msg)
+
+    result = client.send_transaction(tx)
+
+    if result.value:
+        tx_sig = str(result.value)
+        print(f"[ESCROW] ✅ TX sent: {tx_sig}", flush=True)
+        return tx_sig
+    else:
+        raise RuntimeError(f"Transaction failed: {result}")
 
 
 # =============================================================================
@@ -661,47 +765,47 @@ def approve_solution(solution_id):
 
         print(f"[SWARMSOLVE] Approving {solution_id}: {winner_amount:,} to {winner_wallet[:8]}..., fee {fee_amount:,}", flush=True)
 
-        # Queue winner payment via payment queue file
-        queue_file = "/app/data/payment_queue.json"
-        queue = []
-        if os.path.exists(queue_file):
-            try:
-                with open(queue_file, 'r') as f:
-                    queue = json.load(f)
-            except:
-                queue = []
-        queue.append({
-            "pr_number": pr_number,
-            "wallet": winner_wallet,
-            "amount": winner_amount,
-            "bounty_issue_id": issue_number,
-            "review_score": None,
-            "author": author,
-            "queued_at": datetime.utcnow().isoformat(),
-            "status": "pending"
-        })
-        with open(queue_file, 'w') as f:
-            json.dump(queue, f, indent=2)
-        print(f"[SWARMSOLVE] Payment queued: {winner_amount:,} WATT to {winner_wallet[:8]}...", flush=True)
+        # Send winner payout directly from escrow wallet
+        try:
+            winner_tx = send_watt_from_escrow(
+                winner_wallet, winner_amount,
+                memo=f"swarmsolve:payout:{solution_id}"
+            )
+        except Exception as e:
+            print(f"[SWARMSOLVE] Winner payment failed: {e}", flush=True)
+            return jsonify({"error": f"Payment failed: {e}"}), 500
 
-        # TODO v2: Queue treasury fee payment separately
-        # For now, fee stays in escrow wallet (manual treasury transfer)
+        # Send treasury fee from escrow wallet
+        treasury_tx = None
+        if fee_amount > 0 and TREASURY_WALLET:
+            try:
+                time.sleep(2)  # Brief delay between TXs
+                treasury_tx = send_watt_from_escrow(
+                    TREASURY_WALLET, fee_amount,
+                    memo=f"swarmsolve:fee:{solution_id}"
+                )
+            except Exception as e:
+                print(f"[SWARMSOLVE] Treasury fee failed (non-critical): {e}", flush=True)
 
         # Update solution record
         solution["status"] = "approved"
         solution["winner_pr"] = pr_number
         solution["winner_wallet"] = winner_wallet
         solution["winner_author"] = author
+        solution["payout_tx"] = winner_tx
+        solution["treasury_tx"] = treasury_tx
         solution["approved_at"] = datetime.utcnow().isoformat()
         save_solutions(solutions_data)
 
         # GitHub comment + close issue
+        tx_link = f"https://solscan.io/tx/{winner_tx}"
+        fee_line = f"\n**Fee TX:** [Solscan](https://solscan.io/tx/{treasury_tx})" if treasury_tx else "\n**Fee:** Pending manual transfer"
         post_issue_comment(issue_number,
-            f"## Solution Approved\n\n"
+            f"## ✅ Solution Approved — Paid\n\n"
             f"**Winner:** @{author} (PR #{pr_number})\n"
-            f"**Payout:** {winner_amount:,} WATT (95%)\n"
-            f"**Fee:** {fee_amount:,} WATT (5% treasury)\n\n"
-            f"Payment processing..."
+            f"**Payout:** {winner_amount:,} WATT\n"
+            f"**TX:** [Solscan]({tx_link})\n"
+            f"**Fee:** {fee_amount:,} WATT (5% treasury){fee_line}\n"
         )
         close_github_issue(issue_number)
 
@@ -718,12 +822,14 @@ def approve_solution(solution_id):
         )
 
         return jsonify({
-            "message": "Solution approved! Payment queued.",
+            "message": "Solution approved! Payment sent from escrow.",
             "solution_id": solution_id,
             "winner": author,
             "winner_wallet": mask_wallet(winner_wallet),
             "payout_watt": winner_amount,
+            "payout_tx": winner_tx,
             "fee_watt": fee_amount,
+            "treasury_tx": treasury_tx,
             "pr_number": pr_number
         }), 200
 
@@ -756,51 +862,45 @@ def refund_solution(solution_id):
         if solution["status"] != "open":
             return jsonify({"error": f"Solution is '{solution['status']}', cannot refund"}), 400
 
-        # Queue refund to customer wallet
-        queue_file = "/app/data/payment_queue.json"
-        queue = []
-        if os.path.exists(queue_file):
-            try:
-                with open(queue_file, 'r') as f:
-                    queue = json.load(f)
-            except:
-                queue = []
-        queue.append({
-            "pr_number": 0,
-            "wallet": solution["customer_wallet"],
-            "amount": solution["budget_watt"],
-            "bounty_issue_id": solution.get("github_issue"),
-            "review_score": None,
-            "author": "swarmsolve-refund",
-            "queued_at": datetime.utcnow().isoformat(),
-            "status": "pending"
-        })
-        with open(queue_file, 'w') as f:
-            json.dump(queue, f, indent=2)
-        print(f"[SWARMSOLVE] Refund queued: {solution['budget_watt']:,} WATT to {solution['customer_wallet'][:8]}...", flush=True)
+        # Send refund directly from escrow wallet
+        try:
+            refund_tx = send_watt_from_escrow(
+                solution["customer_wallet"], solution["budget_watt"],
+                memo=f"swarmsolve:refund:{solution_id}"
+            )
+        except Exception as e:
+            print(f"[SWARMSOLVE] Refund payment failed: {e}", flush=True)
+            return jsonify({"error": f"Refund payment failed: {e}"}), 500
+
+        print(f"[SWARMSOLVE] Refund sent: {solution['budget_watt']:,} WATT to {solution['customer_wallet'][:8]}...", flush=True)
 
         solution["status"] = "refunded"
+        solution["refund_tx"] = refund_tx
         solution["refunded_at"] = datetime.utcnow().isoformat()
         save_solutions(solutions_data)
 
         # GitHub comment + close
         if solution.get("github_issue"):
+            refund_link = f"https://solscan.io/tx/{refund_tx}"
             post_issue_comment(solution["github_issue"],
-                f"## Escrow Refunded\n\n"
-                f"No winner selected. {solution['budget_watt']:,} WATT returned to customer."
+                f"## ✅ Escrow Refunded\n\n"
+                f"No winner selected. {solution['budget_watt']:,} WATT returned to customer.\n"
+                f"**TX:** [Solscan]({refund_link})"
             )
             close_github_issue(solution["github_issue"])
 
         notify_discord(
             "Solution Refunded",
             f"**{solution['title']}** — {solution['budget_watt']:,} WATT returned",
-            color=0xFFA500
+            color=0xFFA500,
+            fields={"TX": f"[Solscan](https://solscan.io/tx/{refund_tx})"}
         )
 
         return jsonify({
-            "message": "Refund queued",
+            "message": "Refund sent from escrow",
             "solution_id": solution_id,
-            "amount": solution["budget_watt"]
+            "amount": solution["budget_watt"],
+            "refund_tx": refund_tx
         }), 200
 
     except Exception as e:
