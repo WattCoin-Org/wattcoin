@@ -503,8 +503,9 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
     from solders.pubkey import Pubkey
     from solders.keypair import Keypair
     from solders.instruction import Instruction
-    from spl.token.instructions import get_associated_token_address, transfer_checked, TransferCheckedParams
-    from spl.token.constants import TOKEN_2022_PROGRAM_ID
+    from spl.token.instructions import get_associated_token_address, transfer_checked, TransferCheckedParams, create_associated_token_account
+    from spl.token.constants import TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
+    from solders.system_program import ID as SYSTEM_PROGRAM_ID
     
     try:
         # Configuration
@@ -567,8 +568,9 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
         except Exception as e:
             return None, f"Invalid recipient wallet address: {e}"
         
-        # Look up RECIPIENT's token account
+        # Look up RECIPIENT's token account (auto-create if missing)
         print(f"[PAYMENT] Looking up recipient's WATT token account...", flush=True)
+        create_ata_ix = None
         try:
             rpc_payload = {
                 "jsonrpc": "2.0",
@@ -590,7 +592,18 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
                 recipient_ata = Pubkey.from_string(token_account_pubkey)
                 print(f"[PAYMENT] Found recipient token account: {str(recipient_ata)[:8]}...", flush=True)
             else:
-                return None, f"Recipient wallet has no WATT token account. Please have them receive WATT once first to create the account."
+                # No ATA exists — derive it and add create instruction to transaction
+                print(f"[PAYMENT] No WATT token account found for recipient. Creating ATA...", flush=True)
+                recipient_ata = get_associated_token_address(
+                    recipient_pubkey, mint_pubkey, token_program_id=TOKEN_2022_PROGRAM_ID
+                )
+                create_ata_ix = create_associated_token_account(
+                    payer=payer.pubkey(),
+                    owner=recipient_pubkey,
+                    mint=mint_pubkey,
+                    token_program_id=TOKEN_2022_PROGRAM_ID
+                )
+                print(f"[PAYMENT] Will create recipient ATA: {str(recipient_ata)[:8]}...", flush=True)
             
         except Exception as e:
             print(f"[PAYMENT] Error looking up token account: {e}", flush=True)
@@ -634,9 +647,15 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
         recent_blockhash = recent_blockhash_resp.value.blockhash
         print(f"[PAYMENT] Recent blockhash obtained", flush=True)
         
-        # Create and sign transaction (memo first, then transfer)
+        # Create and sign transaction (create ATA if needed, then memo, then transfer)
+        tx_instructions = []
+        if create_ata_ix:
+            tx_instructions.append(create_ata_ix)
+        tx_instructions.append(memo_ix)
+        tx_instructions.append(transfer_ix)
+        
         message = Message.new_with_blockhash(
-            [memo_ix, transfer_ix],
+            tx_instructions,
             payer.pubkey(),
             recent_blockhash
         )
@@ -1029,29 +1048,27 @@ def github_webhook():
         print(f"[WEBHOOK:{request_id}] Ignoring action={action} merged={merged} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": f"Ignoring action: {action}, merged: {merged}"}), 200
     
-    # === MERGE PAYMENT PATH (wrapped in try/except to prevent bare 500s) ===
-    try:
-        # Check emergency pause
-        is_paused, pause_type, pause_msg = check_emergency_pause()
-        if is_paused and pause_type == "payouts":
-            log_security_event("payout_blocked_pause", {
-                "pr_number": pr_number,
-                "reason": pause_msg
-            })
-            
-            # Still return 200 to acknowledge webhook
-            return jsonify({"message": "Payouts paused, no action taken"}), 200
+    # Check emergency pause
+    is_paused, pause_type, pause_msg = check_emergency_pause()
+    if is_paused and pause_type == "payouts":
+        log_security_event("payout_blocked_pause", {
+            "pr_number": pr_number,
+            "reason": pause_msg
+        })
         
-        # Track merge in reputation system (before bounty logic — ALL merges count)
-        update_reputation(pr_author, "merge", pr_number, watt_earned=0)
-        
-        # Extract wallet from PR body
-        pr_body = pr.get("body", "")
-        wallet, wallet_error = extract_wallet_from_pr_body(pr_body)
-        
-        if wallet_error:
-            # Post comment about missing wallet
-            comment = f"""## ❌ Payout Failed
+        # Still return 200 to acknowledge webhook
+        return jsonify({"message": "Payouts paused, no action taken"}), 200
+    
+    # Track merge in reputation system (before bounty logic — ALL merges count)
+    update_reputation(pr_author, "merge", pr_number, watt_earned=0)
+    
+    # Extract wallet from PR body
+    pr_body = pr.get("body", "")
+    wallet, wallet_error = extract_wallet_from_pr_body(pr_body)
+    
+    if wallet_error:
+        # Post comment about missing wallet
+        comment = f"""## ❌ Payout Failed
 
 Unable to process payout: {wallet_error}
 
@@ -1060,86 +1077,86 @@ Please update the PR description with your wallet address in this format:
 **Payout Wallet**: your_solana_address_here
 ```
 """
-            post_github_comment(pr_number, comment)
-            
-            log_security_event("payout_failed", {
-                "pr_number": pr_number,
-                "reason": "missing_wallet",
-                "error": wallet_error
-            })
-            notify_discord(
-                "⚠️ Wallet Extraction Failed",
-                f"PR #{pr_number} merged but payout wallet not found in PR body.",
-                color=0xFFA500,
-                fields={"PR": f"#{pr_number}", "Author": pr.get("user", {}).get("login", "unknown"), "Error": str(wallet_error)[:200]}
-            )
-            
-            elapsed = time.time() - start_time
-            print(f"[WEBHOOK:{request_id}] Wallet extraction failed for PR #{pr_number} in {elapsed:.2f}s", flush=True)
-            return jsonify({"message": "Wallet not found in PR"}), 200
+        post_github_comment(pr_number, comment)
         
-        # Find review record
-        review_data = find_pr_review(pr_number)
+        log_security_event("payout_failed", {
+            "pr_number": pr_number,
+            "reason": "missing_wallet",
+            "error": wallet_error
+        })
+        notify_discord(
+            "⚠️ Wallet Extraction Failed",
+            f"PR #{pr_number} merged but payout wallet not found in PR body.",
+            color=0xFFA500,
+            fields={"PR": f"#{pr_number}", "Author": pr.get("user", {}).get("login", "unknown"), "Error": str(wallet_error)[:200]}
+        )
         
-        if not review_data:
-            # No review found - post comment
-            comment = f"""## ⚠️ No Review Found
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Wallet extraction failed for PR #{pr_number} in {elapsed:.2f}s", flush=True)
+        return jsonify({"message": "Wallet not found in PR"}), 200
+    
+    # Find review record
+    review_data = find_pr_review(pr_number)
+    
+    if not review_data:
+        # No review found - post comment
+        comment = f"""## ⚠️ No Review Found
 
 This PR was merged but no AI review was found in our system.
 
 If you believe this is a bounty PR, please contact an admin to manually process the payout.
 """
-            post_github_comment(pr_number, comment)
-            
-            log_security_event("payout_no_review", {
-                "request_id": request_id,
-                "pr_number": pr_number,
-                "wallet": wallet
-            })
-            
-            elapsed = time.time() - start_time
-            print(f"[WEBHOOK:{request_id}] No review found for PR #{pr_number} in {elapsed:.2f}s", flush=True)
-            return jsonify({"message": "No review found"}), 200
+        post_github_comment(pr_number, comment)
         
-        # Check if review passed
-        review_result = review_data.get("review", {})
-        if not review_result.get("pass"):
-            # Review failed - shouldn't have been merged
-            comment = f"""## ⚠️ Review Did Not Pass
+        log_security_event("payout_no_review", {
+            "request_id": request_id,
+            "pr_number": pr_number,
+            "wallet": wallet
+        })
+        
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] No review found for PR #{pr_number} in {elapsed:.2f}s", flush=True)
+        return jsonify({"message": "No review found"}), 200
+    
+    # Check if review passed
+    review_result = review_data.get("review", {})
+    if not review_result.get("pass"):
+        # Review failed - shouldn't have been merged
+        comment = f"""## ⚠️ Review Did Not Pass
 
 This PR was merged but the AI review score was {review_result.get('score')}/10 (requires ≥8).
 
 Payout has been flagged for manual admin review.
 """
-            post_github_comment(pr_number, comment)
-            
-            log_security_event("payout_failed_review", {
-                "pr_number": pr_number,
-                "wallet": wallet,
-                "score": review_result.get("score")
-            })
-            
-            # Still queue it, but admin will see low score
+        post_github_comment(pr_number, comment)
         
-        # Get bounty issue ID from review or PR references
-        bounty_issue_id = review_data.get("bounty_issue_id")
+        log_security_event("payout_failed_review", {
+            "pr_number": pr_number,
+            "wallet": wallet,
+            "score": review_result.get("score")
+        })
         
-        if not bounty_issue_id:
-            # Try to find from PR body
-            import re
-            referenced = re.findall(r'(?:closes?|fixes?|resolves?)?\s*#(\d+)', pr_body, re.IGNORECASE)
-            if referenced:
-                # Take the first referenced issue
-                bounty_issue_id = int(referenced[0])
-        
-        # Get bounty amount
-        amount = None
-        if bounty_issue_id:
-            amount = get_bounty_amount(bounty_issue_id)
-        
-        if not amount:
-            # No bounty amount found
-            comment = f"""## ⚠️ No Bounty Amount Found
+        # Still queue it, but admin will see low score
+    
+    # Get bounty issue ID from review or PR references
+    bounty_issue_id = review_data.get("bounty_issue_id")
+    
+    if not bounty_issue_id:
+        # Try to find from PR body
+        import re
+        referenced = re.findall(r'(?:closes?|fixes?|resolves?)?\s*#(\d+)', pr_body, re.IGNORECASE)
+        if referenced:
+            # Take the first referenced issue
+            bounty_issue_id = int(referenced[0])
+    
+    # Get bounty amount
+    amount = None
+    if bounty_issue_id:
+        amount = get_bounty_amount(bounty_issue_id)
+    
+    if not amount:
+        # No bounty amount found
+        comment = f"""## ⚠️ No Bounty Amount Found
 
 This PR was merged but we couldn't determine the bounty amount.
 
@@ -1147,81 +1164,44 @@ Referenced issue: {f'#{bounty_issue_id}' if bounty_issue_id else 'None found'}
 
 An admin will review and process the payout manually if applicable.
 """
-            post_github_comment(pr_number, comment)
-            
-            log_security_event("payout_no_amount", {
-                "request_id": request_id,
-                "pr_number": pr_number,
-                "wallet": wallet,
-                "bounty_issue_id": bounty_issue_id
-            })
-            
-            elapsed = time.time() - start_time
-            print(f"[WEBHOOK:{request_id}] No bounty amount for PR #{pr_number} in {elapsed:.2f}s", flush=True)
-            return jsonify({"message": "No bounty amount found"}), 200
+        post_github_comment(pr_number, comment)
         
-        # Execute payment automatically
-        post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
-        
-        queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
-        
-        # Update WATT earned in reputation (merge already tracked earlier, deduped by PR#)
-        update_reputation(pr_author, "merge", pr_number, watt_earned=amount)
-        
-        # Payment queued - comment will be posted by process_payment_queue() after confirmation
-        log_security_event("payment_queued", {
+        log_security_event("payout_no_amount", {
             "request_id": request_id,
             "pr_number": pr_number,
             "wallet": wallet,
-            "amount": amount,
             "bounty_issue_id": bounty_issue_id
         })
         
         elapsed = time.time() - start_time
-        print(f"[WEBHOOK:{request_id}] Payment queued for PR #{pr_number} ({amount:,} WATT) in {elapsed:.2f}s", flush=True)
+        print(f"[WEBHOOK:{request_id}] No bounty amount for PR #{pr_number} in {elapsed:.2f}s", flush=True)
+        return jsonify({"message": "No bounty amount found"}), 200
+    
+    # Execute payment automatically
+    post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
+    
+    queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
+    
+    # Update WATT earned in reputation (merge already tracked earlier, deduped by PR#)
+    update_reputation(pr_author, "merge", pr_number, watt_earned=amount)
+    
+    # Payment queued - comment will be posted by process_payment_queue() after confirmation
+    log_security_event("payment_queued", {
+        "request_id": request_id,
+        "pr_number": pr_number,
+        "wallet": wallet,
+        "amount": amount,
+        "bounty_issue_id": bounty_issue_id
+    })
+    
+    elapsed = time.time() - start_time
+    print(f"[WEBHOOK:{request_id}] Payment queued for PR #{pr_number} ({amount:,} WATT) in {elapsed:.2f}s", flush=True)
 
-        return jsonify({
-            "message": "Payment queued for processing",
-            "amount": amount,
-            "wallet": wallet
-        }), 200
-
-    except Exception as e:
-        # Catch-all: log the crash, notify Discord, return 200 to ack webhook
-        elapsed = time.time() - start_time
-        error_msg = f"{type(e).__name__}: {str(e)}"
-        print(f"[WEBHOOK:{request_id}] ❌ MERGE PATH CRASH for PR #{pr_number}: {error_msg} in {elapsed:.2f}s", flush=True)
-        
-        import traceback
-        traceback.print_exc()
-        
-        log_security_event("webhook_merge_crash", {
-            "request_id": request_id,
-            "pr_number": pr_number,
-            "author": pr_author,
-            "error": error_msg
-        })
-        
-        notify_discord(
-            "🚨 Webhook Merge Path Crash",
-            f"PR #{pr_number} merged but payment processing crashed.\n\n**Error:** {error_msg[:500]}",
-            color=0xFF0000,
-            fields={"PR": f"#{pr_number}", "Author": pr_author, "Error": error_msg[:200]}
-        )
-        
-        # Try to post comment on PR about the failure
-        try:
-            post_github_comment(pr_number, 
-                f"## ⚠️ Payment Processing Error\n\n"
-                f"An internal error occurred while processing the payout for this PR.\n\n"
-                f"An admin has been notified and will process the payment manually.\n\n"
-                f"Error ref: `{request_id}`"
-            )
-        except:
-            pass
-        
-        # Return 200 to acknowledge webhook — don't let GitHub retry and cause duplicate processing
-        return jsonify({"message": "Merge processing failed", "error": error_msg, "request_id": request_id}), 200
+    return jsonify({
+        "message": "Payment queued for processing",
+        "amount": amount,
+        "wallet": wallet
+    }), 200
 
 # =============================================================================
 # PAYMENT QUEUE PROCESSOR
@@ -1548,6 +1528,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 
