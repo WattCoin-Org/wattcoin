@@ -386,12 +386,11 @@ def close_pr(pr_number):
 # =============================================================================
 
 def call_ai_review(pr_info):
-    """Send PR to AI for review."""
+    """Send PR to AI for structured review with score."""
     if not AI_API_KEY:
         return {"error": "AI_API_KEY not configured"}
     
-    prompt = f"""You are a strict bounty reviewer for WattCoin agent-native OSS.
-Review this Pull Request for a bounty task.
+    prompt = f"""You are a strict code reviewer for the WattCoin project — a production Solana utility token with live payments.
 
 PR #{pr_info['number']}: {pr_info['title']}
 Author: {pr_info['author']}
@@ -402,26 +401,26 @@ DIFF:
 {pr_info['diff']}
 ```
 
-Check:
-1. Does it solve the stated task fully?
-2. Code quality (clean, readable, follows existing patterns)?
-3. Security (no backdoors, hardcoded secrets, suspicious patterns)?
-4. Tests (added/updated if applicable)?
-5. Completeness (% done, what's missing)?
+Review for: functionality, code quality, security, scope match, breaking changes, dead code, test validity.
 
-Output in this exact format:
+STRICT RULES:
+- If ANY existing functionality is removed or degraded, score MUST be ≤5.
+- If ANY concern is listed, score CANNOT be 9 or higher.
+- Score of 9+ passes review. Be strict — this is live production.
 
-**RECOMMENDATION:** Approve / Request changes / Reject
-**CONFIDENCE:** High / Medium / Low
-**COMPLETENESS:** X%
+Respond ONLY with valid JSON:
+{{
+  "score": 1-10,
+  "pass": true/false,
+  "recommendation": "Approve / Request changes / Reject",
+  "completeness": "X%",
+  "feedback": "2-3 sentence summary",
+  "concerns": ["concern 1", "concern 2"],
+  "suggested_changes": ["change 1", "change 2"],
+  "suggested_payout": "100% / X% / 0%"
+}}
 
-**Summary:** 2-3 sentence summary of the PR quality and what it does.
-
-**Issues Found:**
-- List any problems (or "None" if clean)
-
-**Suggested Payout:** 100% / X% / 0% of bounty
-"""
+Do not include any text before or after the JSON."""
 
     try:
         from ai_provider import call_ai
@@ -430,11 +429,38 @@ Output in this exact format:
         if ai_error:
             return {"error": ai_error}
         
-        return {
+        # Parse structured JSON response
+        parsed = None
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                # Enforce: concerns listed → cannot pass
+                if parsed.get("concerns") and len(parsed["concerns"]) > 0:
+                    parsed["pass"] = False
+                    if parsed.get("score", 0) >= 9:
+                        parsed["score"] = 8
+        except (json.JSONDecodeError, Exception):
+            pass
+        
+        result = {
             "success": True,
             "review": content,
             "timestamp": datetime.now().isoformat()
         }
+        
+        if parsed:
+            result["score"] = parsed.get("score")
+            result["passed"] = parsed.get("pass", False)
+            result["feedback"] = parsed.get("feedback", "")
+            result["concerns"] = parsed.get("concerns", [])
+            result["suggested_changes"] = parsed.get("suggested_changes", [])
+            result["recommendation"] = parsed.get("recommendation", "")
+            result["completeness"] = parsed.get("completeness", "")
+            result["suggested_payout"] = parsed.get("suggested_payout", "")
+        
+        return result
     except Exception as e:
         return {"error": f"AI request failed: {str(e)}"}
 
@@ -484,7 +510,7 @@ DASHBOARD_TEMPLATE = """
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
-                <p class="text-gray-500 text-sm">v3.0.0 | PR Reviews & Bounty Payouts</p>
+                <p class="text-gray-500 text-sm">v3.4.0 | PR Reviews & Bounty Payouts | Pass threshold: ≥9/10</p>
             </div>
             <div class="flex items-center gap-3">
                 <!-- System Health -->
@@ -573,7 +599,7 @@ DASHBOARD_TEMPLATE = """
         {% if prs %}
         <div class="space-y-4">
             {% for pr in prs %}
-            <div class="bg-gray-800 rounded-lg p-4 border-l-4 {% if pr.number|string in reviews %}border-green-500{% else %}border-gray-600{% endif %}">
+            <div class="bg-gray-800 rounded-lg p-4 border-l-4 {% if pr.number|string in reviews %}{% if reviews[pr.number|string].get('passed') %}border-green-500{% elif reviews[pr.number|string].get('score') %}border-red-500{% else %}border-blue-500{% endif %}{% else %}border-gray-600{% endif %}">
                 <div class="flex justify-between items-start">
                     <div>
                         <a href="{{ pr.html_url }}" target="_blank" class="text-lg font-medium hover:text-green-400">
@@ -586,9 +612,24 @@ DASHBOARD_TEMPLATE = """
                             {% endfor %}
                         </div>
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 items-center">
                         {% if pr.number|string in reviews %}
-                        <span class="px-3 py-1 bg-green-900/50 text-green-400 rounded text-sm">Reviewed</span>
+                            {% set rev = reviews[pr.number|string] %}
+                            {% if rev.get('score') %}
+                                {% if rev.get('passed') %}
+                                <span class="px-3 py-1 bg-green-900/50 text-green-400 rounded text-sm font-mono">✅ {{ rev.score }}/10 PASS</span>
+                                {% elif rev.score >= 7 %}
+                                <span class="px-3 py-1 bg-yellow-900/50 text-yellow-400 rounded text-sm font-mono">⚠️ {{ rev.score }}/10</span>
+                                {% else %}
+                                <span class="px-3 py-1 bg-red-900/50 text-red-400 rounded text-sm font-mono">❌ {{ rev.score }}/10 FAIL</span>
+                                {% endif %}
+                            {% elif rev.get('status') == 'approved' %}
+                                <span class="px-3 py-1 bg-green-900/50 text-green-400 rounded text-sm">✅ Merged</span>
+                            {% elif rev.get('status') == 'rejected' %}
+                                <span class="px-3 py-1 bg-red-900/50 text-red-400 rounded text-sm">❌ Rejected</span>
+                            {% else %}
+                                <span class="px-3 py-1 bg-blue-900/50 text-blue-400 rounded text-sm">Reviewed</span>
+                            {% endif %}
                         {% endif %}
                         <a href="{{ url_for('admin.pr_detail', pr_number=pr.number) }}" 
                            class="px-4 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
@@ -596,6 +637,9 @@ DASHBOARD_TEMPLATE = """
                         </a>
                     </div>
                 </div>
+                {% if pr.number|string in reviews and reviews[pr.number|string].get('feedback') %}
+                <div class="mt-2 text-gray-400 text-sm">{{ reviews[pr.number|string].feedback[:120] }}{% if reviews[pr.number|string].feedback|length > 120 %}...{% endif %}</div>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -659,6 +703,14 @@ DASHBOARD_TEMPLATE = """
                         <span class="text-gray-500 text-xs ml-3">Queues only — hit "Process Payment Queue" to send on-chain.</span>
                     </div>
                 </form>
+            </div>
+        </div>
+        
+        <!-- SwarmSolve Solutions Status -->
+        <div class="mt-8 pt-6 border-t border-gray-700">
+            <h2 class="text-xl font-semibold mb-4">🔬 SwarmSolve Solutions</h2>
+            <div id="swarmsolve-section">
+                <div class="text-gray-500 text-sm">Loading solutions...</div>
             </div>
         </div>
         
@@ -800,8 +852,76 @@ DASHBOARD_TEMPLATE = """
         // Check on load, then every 30s
         checkHealth();
         checkWebhooks();
+        loadSwarmSolve();
         setInterval(checkHealth, 30000);
         setInterval(checkWebhooks, 30000);
+        
+        async function loadSwarmSolve() {
+            const section = document.getElementById('swarmsolve-section');
+            try {
+                const resp = await fetch('/api/v1/solutions');
+                const data = await resp.json();
+                const solutions = data.solutions || [];
+                
+                if (solutions.length === 0) {
+                    section.innerHTML = '<div class="bg-gray-800 rounded-lg p-6 text-center text-gray-500">No SwarmSolve solutions yet</div>';
+                    return;
+                }
+                
+                let html = '<div class="space-y-3">';
+                for (const s of solutions) {
+                    const statusColors = {
+                        'open': 'bg-blue-900/40 border-blue-600 text-blue-400',
+                        'approved': 'bg-green-900/40 border-green-600 text-green-400',
+                        'refunded': 'bg-gray-800 border-gray-600 text-gray-400',
+                        'expired': 'bg-gray-800 border-gray-600 text-gray-500'
+                    };
+                    const statusIcons = {
+                        'open': '🔵',
+                        'approved': '✅',
+                        'refunded': '↩️',
+                        'expired': '⏰'
+                    };
+                    const colors = statusColors[s.status] || 'bg-gray-800 border-gray-600 text-gray-400';
+                    const icon = statusIcons[s.status] || '❓';
+                    
+                    html += '<div class="' + colors + ' border rounded-lg p-4">';
+                    html += '<div class="flex justify-between items-start">';
+                    html += '<div>';
+                    html += '<div class="font-medium">' + icon + ' ' + (s.title || 'Untitled') + '</div>';
+                    html += '<div class="text-xs text-gray-500 mt-1">';
+                    html += 'ID: ' + (s.id || '-').substring(0, 12) + '... ';
+                    html += '• Budget: ' + (s.budget_watt ? s.budget_watt.toLocaleString() : '?') + ' WATT ';
+                    if (s.deadline_date) html += '• Deadline: ' + s.deadline_date;
+                    html += '</div>';
+                    html += '</div>';
+                    html += '<div class="flex items-center gap-2">';
+                    
+                    // Scan status badge
+                    if (s.status === 'approved') {
+                        html += '<span class="px-2 py-1 bg-green-900/50 text-green-400 rounded text-xs">🛡️ Scan Passed</span>';
+                    } else if (s.status === 'open') {
+                        html += '<span class="px-2 py-1 bg-gray-700 text-gray-400 rounded text-xs">🔍 Scan on approve</span>';
+                    }
+                    
+                    html += '<span class="px-2 py-1 bg-gray-700 rounded text-xs uppercase">' + s.status + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                    
+                    // Show GitHub issue link if exists
+                    if (s.github_issue_url) {
+                        html += '<div class="mt-2 text-xs"><a href="' + s.github_issue_url + '" target="_blank" class="text-blue-400 hover:underline">→ GitHub Issue</a></div>';
+                    }
+                    
+                    html += '</div>';
+                }
+                html += '</div>';
+                
+                section.innerHTML = html;
+            } catch (err) {
+                section.innerHTML = '<div class="bg-gray-800 rounded-lg p-4 text-red-400 text-sm">Failed to load solutions: ' + err.message + '</div>';
+            }
+        }
     </script>
 </body>
 </html>
@@ -862,18 +982,78 @@ PR_DETAIL_TEMPLATE = """
             </h2>
             
             {% if review %}
-            <div class="bg-gray-900 rounded p-4 mb-4">
-                <pre class="whitespace-pre-wrap text-sm">{{ review.review }}</pre>
+            
+            <!-- Score Badge -->
+            {% if review.score %}
+            <div class="flex items-center gap-4 mb-4">
+                {% if review.get('passed') %}
+                <div class="px-4 py-2 bg-green-900/50 border border-green-600 rounded-lg text-green-400 font-bold text-lg">✅ {{ review.score }}/10 PASS</div>
+                {% elif review.score >= 7 %}
+                <div class="px-4 py-2 bg-yellow-900/50 border border-yellow-600 rounded-lg text-yellow-400 font-bold text-lg">⚠️ {{ review.score }}/10</div>
+                {% else %}
+                <div class="px-4 py-2 bg-red-900/50 border border-red-600 rounded-lg text-red-400 font-bold text-lg">❌ {{ review.score }}/10 FAIL</div>
+                {% endif %}
+                
+                {% if review.recommendation %}
+                <span class="text-gray-400 text-sm">{{ review.recommendation }}</span>
+                {% endif %}
+                {% if review.completeness %}
+                <span class="text-gray-500 text-sm">• {{ review.completeness }} complete</span>
+                {% endif %}
+                {% if review.suggested_payout %}
+                <span class="text-gray-500 text-sm">• Payout: {{ review.suggested_payout }}</span>
+                {% endif %}
             </div>
+            {% endif %}
+            
+            <!-- Feedback -->
+            {% if review.feedback %}
+            <div class="bg-gray-900 rounded p-4 mb-4">
+                <div class="text-gray-300">{{ review.feedback }}</div>
+            </div>
+            {% endif %}
+            
+            <!-- Concerns -->
+            {% if review.concerns %}
+            <div class="bg-red-900/20 border border-red-800/50 rounded p-4 mb-4">
+                <div class="text-red-400 font-semibold text-sm mb-2">⚠️ Concerns ({{ review.concerns|length }})</div>
+                {% for c in review.concerns %}
+                <div class="text-red-300 text-sm py-1">• {{ c }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Suggested Changes -->
+            {% if review.suggested_changes %}
+            <div class="bg-blue-900/20 border border-blue-800/50 rounded p-4 mb-4">
+                <div class="text-blue-400 font-semibold text-sm mb-2">💡 Suggested Changes</div>
+                {% for s in review.suggested_changes %}
+                <div class="text-blue-300 text-sm py-1">• {{ s }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Raw Review (collapsible) -->
+            {% if review.review %}
+            <details class="mt-4">
+                <summary class="cursor-pointer text-gray-500 hover:text-gray-300 text-sm">View raw AI response</summary>
+                <div class="bg-gray-900 rounded p-4 mt-2">
+                    <pre class="whitespace-pre-wrap text-sm text-gray-400">{{ review.review }}</pre>
+                </div>
+            </details>
+            {% endif %}
+            
             {% else %}
             <p class="text-gray-500 mb-4">No AI review yet.</p>
             {% endif %}
             
-            <form method="POST" action="{{ url_for('admin.trigger_review', pr_number=pr.number) }}">
-                <button type="submit" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded transition">
-                    {% if review %}🔄 Re-run AI Review{% else %}🚀 Run AI Review{% endif %}
-                </button>
-            </form>
+            <div class="mt-4">
+                <form method="POST" action="{{ url_for('admin.trigger_review', pr_number=pr.number) }}">
+                    <button type="submit" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded transition">
+                        {% if review %}🔄 Re-run AI Review{% else %}🚀 Run AI Review{% endif %}
+                    </button>
+                </form>
+            </div>
         </div>
         
         <!-- Actions -->
@@ -1608,12 +1788,19 @@ def trigger_review(pr_number):
     
     if result.get("success"):
         data = load_data()
-        data["reviews"][str(pr_number)] = {
+        review_entry = {
             "review": result["review"],
             "timestamp": result["timestamp"],
             "pr_title": pr["title"],
             "author": pr["author"]
         }
+        # Store structured fields if available
+        for field in ["score", "passed", "feedback", "concerns", "suggested_changes", 
+                       "recommendation", "completeness", "suggested_payout"]:
+            if field in result:
+                review_entry[field] = result[field]
+        
+        data["reviews"][str(pr_number)] = review_entry
         save_data(data)
         return redirect(url_for('admin.pr_detail', pr_number=pr_number, message="AI review completed"))
     else:
