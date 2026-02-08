@@ -1,3 +1,17 @@
+## [February 8, 2026 - v3.8.0] - Admin Dashboard Enhancements
+
+### Admin Dashboard v3.8.0 (NEW)
+- **Payment Queue Monitor** — inline view of pending payments (PR#, wallet, amount, age) with auto-refresh every 30s
+- **Open Bounties View** — shows all bounty-labeled GitHub issues with WATT amounts, claim status, and direct links
+- **SwarmSolve Claim Counts** — open solutions now show claim slots (X/5) in admin dashboard cards
+- Added `GET /admin/api/queue` endpoint — returns pending payment queue as JSON
+- Added `GET /admin/api/bounties` endpoint — returns open bounty issues from GitHub API
+- Dashboard version bumped to v3.8.0
+
+### Contributors
+- Project Owner — Requirements
+- Claude — Implementation
+
 ## [February 8, 2026 - v3.7.0] - Discord Activity Feed
 
 ### Discord Activity Feed (NEW)
