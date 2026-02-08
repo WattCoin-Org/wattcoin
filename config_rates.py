@@ -6,7 +6,7 @@ class RateLimitConfig:
     
     JUSTIFICATION:
     Moving hardcoded limits to a centralized config allows for consistent 
-    enforcement across nodes and enables DevOps to fine-tune limits via 
+    enforcement across blueprints and enables DevOps to fine-tune limits via 
     environment variables without code redeploys.
     """
     
@@ -14,8 +14,8 @@ class RateLimitConfig:
     STORAGE_URI = os.getenv("REDIS_URL", "memory://")
     
     # Global default: Restoration of original dual limits (1000/hr, 100/min)
-    # Passed as a single string for standard Flask-Limiter parsing compatibility
-    DEFAULT = "1000 per hour, 100 per minute"
+    # AI Reviewer requires list format for dual enforcement.
+    DEFAULT = ["1000 per hour", "100 per minute"]
     
     # Shared limits mapped from original hardcoded values
     SCRAPE = os.getenv("RATELIMIT_SCRAPE", "10 per minute")

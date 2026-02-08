@@ -100,9 +100,13 @@ from config_rates import RateLimitConfig
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=[RateLimitConfig.DEFAULT],
-    storage_uri=os.getenv("REDIS_URL", "memory://"), # Original fallback pattern
-    strategy="fixed-window"
+    default_limits=RateLimitConfig.DEFAULT,
+    storage_uri=os.getenv("REDIS_URL", "memory://"),
+    storage_options={"socket_connect_timeout": 30},
+    strategy="fixed-window",
+    headers_enabled=True,
+    swallow_errors=True,
+    in_memory_fallback_enabled=True
 )
 
 # Logger for rate limiting status
