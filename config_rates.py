@@ -1,4 +1,25 @@
 import os
+import logging
+
+# Set up logger
+logger = logging.getLogger("wattcoin.config")
+
+def _validate_limit(limit_str: str) -> bool:
+    """Internal validator for 'X per Y' format"""
+    if not isinstance(limit_str, str): return False
+    parts = limit_str.lower().split(" per ")
+    if len(parts) != 2: return False
+    if not parts[0].strip().replace(" ", "").isdigit(): return False
+    units = ["second", "minute", "hour", "day", "month", "year"]
+    return any(unit in parts[1] for unit in units)
+
+def _get_env_limit(env_var: str, default: str) -> str:
+    """Validated fetch for environment variables with logging on failure"""
+    val = os.getenv(env_var, default)
+    if _validate_limit(val):
+        return val
+    logger.warning(f"Invalid rate limit format for {env_var}: '{val}'. Falling back to default: '{default}'")
+    return default
 
 class RateLimitConfig:
     """
@@ -9,22 +30,6 @@ class RateLimitConfig:
     # Storage
     STORAGE_URI = os.getenv("REDIS_URL", "memory://")
     
-    @staticmethod
-    def _validate_limit(limit_str: str) -> bool:
-        """Internal validator for 'X per Y' format"""
-        if not isinstance(limit_str, str): return False
-        parts = limit_str.lower().split(" per ")
-        if len(parts) != 2: return False
-        if not parts[0].strip().replace(" ", "").isdigit(): return False
-        units = ["second", "minute", "hour", "day", "month", "year"]
-        return any(unit in parts[1] for unit in units)
-
-    @staticmethod
-    def _get_env_limit(env_var: str, default: str) -> str:
-        """Validated fetch for environment variables"""
-        val = os.getenv(env_var, default)
-        return val if RateLimitConfig._validate_limit(val) else default
-
     # Global default (original dual limits: 1000/hr, 100/min)
     # Passed as a list to flask-limiter constructor
     DEFAULT = ["1000 per hour", "100 per minute"]
@@ -35,20 +40,20 @@ class RateLimitConfig:
     TIER_ENTERPRISE = "10000 per hour"
 
     # Expensive operations
-    SCRAPE = _get_env_limit.__func__(None, "RATELIMIT_SCRAPE", "10 per minute")
-    LLM = _get_env_limit.__func__(None, "RATELIMIT_LLM", "10 per minute")
-    REGISTER = _get_env_limit.__func__(None, "RATELIMIT_REGISTER", "5 per hour")
+    SCRAPE = _get_env_limit("RATELIMIT_SCRAPE", "10 per minute")
+    LLM = _get_env_limit("RATELIMIT_LLM", "10 per minute")
+    REGISTER = _get_env_limit("RATELIMIT_REGISTER", "5 per hour")
     
     # Standard API endpoints
-    NODES_READ = _get_env_limit.__func__(None, "RATELIMIT_NODES_READ", "100 per minute")
-    BOUNTY_READ = _get_env_limit.__func__(None, "RATELIMIT_BOUNTY_READ", "100 per minute")
-    TASKS = _get_env_limit.__func__(None, "RATELIMIT_TASKS", "100 per minute")
+    NODES_READ = _get_env_limit("RATELIMIT_NODES_READ", "100 per minute")
+    BOUNTY_READ = _get_env_limit("RATELIMIT_BOUNTY_READ", "100 per minute")
+    TASKS = _get_env_limit("RATELIMIT_TASKS", "100 per minute")
     
     # UI/Frontend endpoints
-    UI_WSI = _get_env_limit.__func__(None, "RATELIMIT_UI", "200 per minute")
+    UI_WSI = _get_env_limit("RATELIMIT_UI", "200 per minute")
     
     # Webhooks
-    WEBHOOKS = _get_env_limit.__func__(None, "RATELIMIT_WEBHOOKS", "50 per minute")
+    WEBHOOKS = _get_env_limit("RATELIMIT_WEBHOOKS", "50 per minute")
 
     @staticmethod
     def get_tier_limit(tier: str) -> str:
