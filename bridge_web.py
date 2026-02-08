@@ -65,6 +65,9 @@ from scraper_errors import (
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
 
+# Track application startup time for uptime calculation
+APP_START_TIME = time.time()
+
 # =============================================================================
 # LOGGING
 # =============================================================================
@@ -108,11 +111,12 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
+    retry_after = getattr(e, "description", "60")
     return jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after
+    }), 429, {"Retry-After": str(retry_after)}
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
 
@@ -770,6 +774,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit("60 per minute")
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1146,6 +1151,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit("60 per minute")
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1225,6 +1231,7 @@ def llm_query():
 
 
 @app.route('/proxy', methods=['POST'])
+@limiter.limit("60 per minute")
 def proxy_request():
     """
     Generic HTTP proxy endpoint - bypasses Claude's egress restrictions.
@@ -1285,6 +1292,7 @@ def proxy_request():
 
 
 @app.route('/proxy/moltbook', methods=['POST'])
+@limiter.limit("60 per minute")
 def proxy_moltbook():
     """
     Convenience endpoint specifically for Moltbook API calls.
@@ -1346,19 +1354,54 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    """
+    Enhanced health check endpoint with detailed service status.
+    Returns comprehensive system health information for monitoring.
+    """
+    # Calculate uptime
+    uptime_seconds = int(time.time() - APP_START_TIME)
+    
+    # Check service availability
+    services = {
+        "ai_client": {
+            "status": "ok" if ai_client else "unavailable",
+            "configured": bool(AI_API_KEY)
+        },
+        "claude_client": {
+            "status": "ok" if claude_client else "unavailable",
+            "configured": bool(CLAUDE_API_KEY)
+        },
+        "proxy": {
+            "status": "ok",
+            "configured": bool(PROXY_SECRET)
+        },
+        "redis": {
+            "status": "ok" if os.getenv("REDIS_URL") else "not_configured",
+            "storage": "redis" if os.getenv("REDIS_URL") else "memory"
+        }
+    }
+    
+    # Get node network stats
     active_nodes = len(get_active_nodes())
+    
+    # Overall health status
+    critical_services = [services["ai_client"]["status"], services["claude_client"]["status"]]
+    overall_status = "healthy" if any(s == "ok" for s in critical_services) else "degraded"
+    
     return jsonify({
-        'status': 'ok', 
-        'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
+        "status": overall_status,
+        "version": "3.4.0",
+        "uptime_seconds": uptime_seconds,
+        "services": services,
+        "network": {
+            "active_nodes": active_nodes
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
     })
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit("100 per minute")
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1397,6 +1440,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit("100 per minute")
 def bounty_stats():
     """
     Public bounty statistics for website.
