@@ -4,7 +4,7 @@ Welcome to WattCoin! This guide will walk you through the process of completing 
 
 ## 1. Prerequisites
 - **GitHub Account**: Required to submit Pull Requests and track issues.
-- **Solana Wallet**: (e.g., Phantom, Solflare) to receive your WATT payouts.
+- **Solana Wallet**: (e.g., Phantom, Solflare) to receive your WATT payouts. Ensure your wallet is compatible with the Solana SPL standard.
 - **Basic Git Knowledge**: You should be comfortable with cloning, branching, and pushing code.
 
 ## 2. Finding a Bounty
