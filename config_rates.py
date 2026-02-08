@@ -9,8 +9,8 @@ class RateLimitConfig:
     # Storage
     STORAGE_URI = os.getenv("REDIS_URL", "memory://")
     
-    # Global default (fallback)
-    DEFAULT = os.getenv("RATELIMIT_DEFAULT", "100 per minute")
+    # Global default (original dual limits: 1000/hr, 100/min)
+    DEFAULT = ["1000 per hour", "100 per minute"]
     
     # Expensive operations
     SCRAPE = os.getenv("RATELIMIT_SCRAPE", "10 per minute")  # High cost (bandwidth + processing)

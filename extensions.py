@@ -6,9 +6,10 @@ from config_rates import RateLimitConfig
 # This allows blueprints to import 'limiter' without circular dependencies
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=[RateLimitConfig.DEFAULT],
+    default_limits=RateLimitConfig.DEFAULT,
     storage_uri=RateLimitConfig.STORAGE_URI, # Prioritize Redis if available (from config_rates)
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
     headers_enabled=True,
+    swallow_errors=True, # Robustness: Allow requests if Redis fails
 )
