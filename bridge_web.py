@@ -1156,7 +1156,6 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
-@limiter.limit(os.getenv("RATE_LIMIT_LLM", "10 per minute"))
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
