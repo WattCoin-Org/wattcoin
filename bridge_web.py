@@ -64,6 +64,7 @@ from scraper_errors import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
+_start_time = time.time()  # For health check uptime
 
 # =============================================================================
 # LOGGING
@@ -1346,16 +1347,39 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    """Extended health check with service status."""
+    from datetime import datetime, timezone
+    
+    # Service checks (lightweight - no HTTP calls)
+    services = {
+        "database": "ok" if os.path.isfile(DATA_FILE) else "degraded",
+        "discord": "ok" if os.getenv("DISCORD_WEBHOOK") else "not_configured",
+        "ai_api": "ok" if (ai_client or claude_client) else "not_configured"
+    }
+    
+    # Count active nodes and open tasks
     active_nodes = len(get_active_nodes())
+    try:
+        with open(DATA_FILE, 'r') as f:
+            data = json.load(f)
+        open_tasks = sum(1 for r in data.get('reviews', []) if r.get('status') == 'pending')
+    except Exception:
+        open_tasks = 0
+    
+    # Determine overall status
+    critical_down = services["database"] == "degraded"
+    status = "degraded" if critical_down else "healthy"
+    http_code = 503 if critical_down else 200
+    
     return jsonify({
-        'status': 'ok', 
+        'status': status,
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': int(time.time() - _start_time),
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), http_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
