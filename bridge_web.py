@@ -1344,18 +1344,47 @@ def proxy_moltbook():
         return jsonify({'error': f'Moltbook proxy error: {str(e)}'}), 500
 
 
+# Track server start time for uptime calculation
+_SERVER_START_TIME = time.time()
+
 @app.route('/health')
 def health():
+    """Extended health check with service-level status."""
+    from datetime import datetime, timezone
+    
+    # Lightweight service checks (no HTTP calls)
+    services = {
+        'database': 'ok' if os.path.isfile(DATA_FILE) and os.access(DATA_FILE, os.R_OK) else 'degraded',
+        'discord': 'ok' if os.getenv('DISCORD_WEBHOOK_URL') else 'unconfigured',
+        'ai_api': 'ok' if os.getenv('AI_API_KEY') or os.getenv('CLAUDE_API_KEY') else 'degraded'
+    }
+    
+    # Count active nodes and open tasks
     active_nodes = len(get_active_nodes())
+    open_tasks = 0
+    tasks_file = os.path.join(os.getenv('DATA_DIR', '/app/data'), 'tasks.json')
+    if os.path.isfile(tasks_file):
+        try:
+            with open(tasks_file, 'r') as f:
+                tasks_data = json.load(f)
+                open_tasks = sum(1 for t in tasks_data.get('tasks', []) if t.get('status') == 'open')
+        except (json.JSONDecodeError, IOError):
+            pass
+    
+    # Determine overall status
+    critical_degraded = services['database'] == 'degraded' or services['ai_api'] == 'degraded'
+    status = 'degraded' if critical_degraded else 'healthy'
+    status_code = 503 if critical_degraded else 200
+    
     return jsonify({
-        'status': 'ok', 
+        'status': status,
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': int(time.time() - _SERVER_START_TIME),
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
