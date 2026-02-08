@@ -10,7 +10,7 @@ wallet: "YourSolanaWalletAddress..."
 # Node Identity
 # =============================================================================
 # Name shown in the network (optional)
-name: "my-raspberry-pi"
+name: "my-wattnode"
 
 # =============================================================================
 # Capabilities
@@ -18,10 +18,26 @@ name: "my-raspberry-pi"
 # =============================================================================
 capabilities:
   - scrape        # Web scraping (default, no extra setup)
-  # - inference   # LLM inference (requires Ollama installed)
+  # - inference   # LLM inference (requires Petals + NVIDIA GPU)
 
 # =============================================================================
-# Ollama Settings (only if inference capability enabled)
+# WSI Inference Settings (requires NVIDIA GPU with ≥6GB VRAM)
+# Enable via the Inference tab in the GUI, or uncomment 'inference' above
+# =============================================================================
+petals:
+  # Model to serve — must match the model other swarm nodes are hosting
+  model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+  # Number of transformer blocks to host (null = auto-detect from GPU VRAM)
+  # More blocks = more contribution = more WATT earned per query
+  # Llama 8B has 32 blocks total; 8GB GPU can serve ~20-25 blocks
+  num_blocks: null
+
+  # P2P port for Petals swarm communication
+  port: 31330
+
+# =============================================================================
+# Legacy: Ollama Settings (only if inference capability enabled without Petals)
 # =============================================================================
 ollama:
   url: "http://localhost:11434"
