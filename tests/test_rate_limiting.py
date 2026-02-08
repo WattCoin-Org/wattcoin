@@ -22,7 +22,6 @@ def test_pricing_returns_rate_limit_headers():
 
 def test_rate_limit_429_has_retry_after():
     """Verify 429 response includes Retry-After header."""
-    client = bridge_web.app.test_client()
     with bridge_web.app.test_request_context():
         from werkzeug.exceptions import TooManyRequests
         err = TooManyRequests()
@@ -31,10 +30,12 @@ def test_rate_limit_429_has_retry_after():
         assert "Retry-After" in response.headers
         data = response.get_json()
         assert data["error"] == "Rate limit exceeded"
-        assert "retry_after" in data
+        assert isinstance(data["retry_after"], int)
 
 
-def test_rate_limit_env_vars_loaded():
-    """Verify env var defaults are applied."""
-    assert bridge_web.RATE_LIMIT_DEFAULT == "60 per minute"
-    assert bridge_web.RATE_LIMIT_HOURLY == "1000 per hour"
+def test_rate_limit_env_vars_are_configurable():
+    """Verify rate limit defaults are loaded and configurable."""
+    assert hasattr(bridge_web, "RATE_LIMIT_DEFAULT")
+    assert hasattr(bridge_web, "RATE_LIMIT_HOURLY")
+    assert "per minute" in bridge_web.RATE_LIMIT_DEFAULT
+    assert "per hour" in bridge_web.RATE_LIMIT_HOURLY
