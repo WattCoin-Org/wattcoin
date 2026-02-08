@@ -754,14 +754,18 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
     return True
 
 def load_banned_users():
-    """Load banned users list from data file."""
+    """Load banned users list from data file + hardcoded permanent bans."""
+    # Hardcoded permanent bans (cannot be bypassed by data file deletion)
+    PERMANENT_BANS = {"ohmygod20260203"}
+    
     banned_file = os.path.join(DATA_DIR, "banned_users.json")
     try:
         with open(banned_file, 'r') as f:
             data = json.load(f)
-            return {u.lower() for u in data.get("banned", [])}
+            file_bans = {u.lower() for u in data.get("banned", [])}
+            return PERMANENT_BANS | file_bans
     except (FileNotFoundError, json.JSONDecodeError):
-        return set()
+        return PERMANENT_BANS
 
 def save_banned_users(banned_set):
     """Save banned users list to data file."""
