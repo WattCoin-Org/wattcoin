@@ -618,6 +618,55 @@ DASHBOARD_TEMPLATE = """
         </div>
         {% endif %}
         
+        <!-- Manual Payment Queue -->
+        <div class="mt-8 pt-6 border-t border-gray-700">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">💳 Manual Payment</h2>
+                <button onclick="processQueue()" id="process-btn" 
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded transition flex items-center gap-2">
+                    ⚡ Process Payment Queue
+                </button>
+            </div>
+            <div id="process-result" class="mb-4 hidden"></div>
+            
+            <div class="bg-gray-800 rounded-lg p-5">
+                <p class="text-gray-400 text-sm mb-4">Queue a payment for a merged PR that missed auto-payment (e.g. wallet was missing at merge time).</p>
+                <form method="POST" action="{{ url_for('admin.queue_manual_payment') }}" class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-gray-400 text-xs mb-1">PR Number *</label>
+                        <input type="number" name="pr_number" required placeholder="94"
+                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-xs mb-1">Bounty Issue # (optional)</label>
+                        <input type="number" name="bounty_issue_id" placeholder="89"
+                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-xs mb-1">Wallet Address *</label>
+                        <input type="text" name="wallet" required placeholder="4fGzQP57XGR..." minlength="32" maxlength="44"
+                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-green-400">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-xs mb-1">Amount (WATT) *</label>
+                        <input type="number" name="amount" required placeholder="3000" min="1" max="100000"
+                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-gray-400 text-xs mb-1">Reason</label>
+                        <input type="text" name="reason" value="Late payout - wallet missing at merge time" 
+                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    </div>
+                    <div class="col-span-2">
+                        <button type="submit" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black font-bold rounded transition">
+                            📥 Queue Payment
+                        </button>
+                        <span class="text-gray-500 text-xs ml-3">Queues only — hit "Process Payment Queue" to send on-chain.</span>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
         <!-- Navigation Links -->
         <div class="mt-8 pt-6 border-t border-gray-700 flex justify-between items-center">
             <div class="flex gap-6">
@@ -632,6 +681,38 @@ DASHBOARD_TEMPLATE = """
     </div>
     
     <script>
+        async function processQueue() {
+            const btn = document.getElementById('process-btn');
+            const resultDiv = document.getElementById('process-result');
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ Processing...';
+            resultDiv.className = 'mb-4 bg-gray-800 rounded-lg p-4';
+            resultDiv.innerHTML = '<span class="text-yellow-400">Processing payments...</span>';
+            
+            try {
+                const resp = await fetch('{{ url_for("admin.process_payment_queue") }}', { method: 'POST' });
+                const data = await resp.json();
+                
+                if (data.success && data.results && data.results.length > 0) {
+                    resultDiv.innerHTML = '<div class="text-green-400 font-bold mb-2">Payment Results:</div>' +
+                        data.results.map(r => '<div class="text-sm py-1">' + r + '</div>').join('');
+                } else if (data.success && data.processed === 0) {
+                    resultDiv.innerHTML = '<span class="text-gray-400">No pending payments in queue.</span>';
+                } else {
+                    resultDiv.innerHTML = '<span class="text-red-400">Error: ' + (data.message || 'Unknown error') + '</span>';
+                }
+            } catch (err) {
+                resultDiv.innerHTML = '<span class="text-red-400">Request failed: ' + err.message + '</span>';
+            }
+            
+            btn.disabled = false;
+            btn.textContent = '⚡ Process Payment Queue';
+            
+            // Refresh webhook health to update badge
+            checkWebhooks();
+        }
+        
         async function checkHealth() {
             const dot = document.getElementById('health-dot');
             const label = document.getElementById('health-label');
