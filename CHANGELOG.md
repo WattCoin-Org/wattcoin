@@ -41,13 +41,13 @@
 - Query cost deduction, daily limits, usage tracking preserved from v1
 
 ### Distributed Node Service (NEW)
-- `wattnode/services/petals_node.py` — GPU detection, dependency installer, server start/stop
+- `wattnode/services/node_service.py` — GPU detection, dependency installer, server start/stop
 - System check: GPU VRAM, RAM, disk space, Python version
 - Install wizard with progress callbacks for GUI integration
 - Server process management with log streaming and status tracking
 
 ### Seed Node HTTP Gateway (NEW)
-- `wattnode/services/petals_gateway.py` — runs on seed node alongside inference server
+- `wattnode/services/inference_gateway.py` — runs on seed node alongside inference server
 - Wraps distributed inference client as HTTP API (Railway forwards queries here)
 - `/inference`, `/swarm`, `/models`, `/health` endpoints
 - Shared-secret auth via environment variable
