@@ -1,3 +1,20 @@
+## [February 8, 2026 - v3.7.0] - Discord Activity Feed
+
+### Discord Activity Feed (NEW)
+- 📋 **Bounty Created** — fires when issue gets `bounty` label (orange embed, WATT amount extracted)
+- 🔄 **PR Submitted** — fires on new PR opened (blue embed, title + author)
+- 🤖 **AI Review Complete** — fires after AI scores PR (green/red embed, score only, no review details)
+- ✅ **PR Merged + Payment Queued** — fires on merge with payment (green embed, amount + wallet truncated)
+- ⭐ **Tier Promotion** — fires when contributor reaches Bronze/Silver/Gold (purple embed)
+- 📦 **Job Completed** — fires on WattNode job completion (blue embed, anonymized)
+- Added `truncate_wallet()` helper for public-safe wallet display
+- Added `issues` event handler to webhook (previously only `pull_request`)
+- All events follow sanitization rules: no specs, no tokens, no admin actions, no stack traces
+
+### Contributors
+- Project Owner — Spec, requirements
+- Claude — Implementation
+
 ## [February 8, 2026 - v3.6.0] - SwarmSolve Agent Claim System
 
 ### SwarmSolve v1.2 — Agent Claim System (NEW)
