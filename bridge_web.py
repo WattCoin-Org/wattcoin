@@ -1341,16 +1341,61 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
+    """
+    Service health check with component status.
+    Returns 200 if healthy, 503 if critical degradation.
+    """
+    # 1. Check Data Files
+    data_status = "ok"
+    try:
+        if not os.path.exists(NODES_FILE) or not os.path.exists(JOBS_FILE):
+             data_status = "missing_files"
+    except:
+        data_status = "error"
+
+    # 2. Check Configuration
+    config_status = {
+        "discord_webhook": "configured" if os.getenv("DISCORD_WEBHOOK_URL") else "missing",
+        "ai_key": "configured" if AI_API_KEY else "missing",
+        "claude_key": "configured" if CLAUDE_API_KEY else "missing"
+    }
+    
+    # 3. Get Stats (Lightweight)
+    active_nodes_count = 0
+    open_tasks = 0
+    try:
+        nodes = get_active_nodes() # Uses cached file read usually or fast DB
+        active_nodes_count = len(nodes)
+        
+        # Quick read for jobs
+        if os.path.exists(JOBS_FILE):
+            with open(JOBS_FILE, 'r') as f:
+                j = json.load(f)
+                open_tasks = len(j.get("pending", []))
+    except:
+        pass
+
+    # Determine overall status
+    status_code = 200
+    status_msg = "healthy"
+    
+    if data_status != "ok":
+        status_code = 503
+        status_msg = "degraded"
+
     return jsonify({
-        'status': 'ok', 
+        'status': status_msg, 
         'version': '3.3.1',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': int(time.time() - START_TIME),
+        'services': {
+            'database': data_status,
+            'ai_api': config_status['ai_key'],
+            'config': config_status
+        },
+        'active_nodes': active_nodes_count,
+        'open_tasks': open_tasks,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
