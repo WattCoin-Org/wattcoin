@@ -7,17 +7,10 @@ import logging
 # Use 'swallow_errors' and 'in_memory_fallback' for high availability
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=[l.strip() for l in RateLimitConfig.DEFAULT.split(",")],
+    default_limits=[RateLimitConfig.DEFAULT],
     storage_uri=RateLimitConfig.STORAGE_URI,
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
     headers_enabled=True,
-    swallow_errors=True,            # Don't crash if Redis is down
-    in_memory_fallback_enabled=True # Fallback to RAM if Redis fails (CRITICAL)
+    swallow_errors=True            # High Availability: Allow requests if Redis is unavailable
 )
-
-def setup_limiter_logging(app):
-    """Register logger for limiter errors after app is available"""
-    logger = logging.getLogger("flask_limiter")
-    # Limiter will now log to the standard app logger
-    pass
