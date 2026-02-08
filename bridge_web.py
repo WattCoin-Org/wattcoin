@@ -93,7 +93,7 @@ CORS(app, origins=[
 from extensions import limiter
 from config_rates import RateLimitConfig
 
-# Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
+# Initialize Flask-Limiter with Centralized Config
 limiter.init_app(app)
 
 # Custom rate limit error handler
@@ -106,7 +106,7 @@ def ratelimit_handler(e):
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
     }), 429
 
-logger.info(f"Flask-Limiter initialized with default limits: {RateLimitConfig.DEFAULT}")
+logger.info(f"Flask-Limiter running with centralized limits: {RateLimitConfig.DEFAULT}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
