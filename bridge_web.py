@@ -1349,7 +1349,7 @@ def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
         'status': 'ok', 
-        'version': '3.3.1',
+        'version': '3.4.0',
         'ai': bool(ai_client), 
         'claude': bool(claude_client),
         'proxy': True,
