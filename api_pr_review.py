@@ -123,10 +123,9 @@ def post_pr_comment(pr_number, comment):
 # AI REVIEW
 # =============================================================================
 
-AI_REVIEW_PROMPT = """You are reviewing a Pull Request for the WattCoin project.
+AI_REVIEW_PROMPT = """You are a strict code reviewer for the WattCoin project — a production Solana utility token with live payments, automated bounties, and distributed compute. Mistakes break real infrastructure.
 
 Repository: https://github.com/WattCoin-Org/wattcoin
-WattCoin is a Solana utility token for AI/robot automation with distributed compute network.
 
 PR Details:
 - Number: {pr_number}
@@ -143,23 +142,52 @@ Code Diff:
 {diff}
 ```
 
-Review Guidelines:
-1. **Functionality**: Does it improve features, fix bugs, or add useful capabilities?
-2. **Code Quality**: Clean, readable, follows existing patterns?
-3. **Security**: No vulnerabilities, no breaking changes without justification?
-4. **Scope**: Changes match PR description, no unrelated modifications?
-5. **Testing**: Would need testing? Are tests included if applicable?
-
 Dangerous patterns already flagged: {security_warnings}
 
-Rate the PR on a scale of 1-10:
-- 10: Excellent, production-ready
-- 8-9: Good, minor improvements possible
-- 6-7: Acceptable with changes
-- 4-5: Needs significant work
-- 1-3: Major issues, reject
+REVIEW CRITERIA (check ALL — fail on any critical issue):
+
+1. **Breaking Change Detection** (CRITICAL)
+   - Flag ANY removal of existing functionality, env var support, or config values.
+   - Compare what the code does NOW vs what the PR changes it to.
+   - Silent downgrades (e.g. removing Redis support, changing defaults) = automatic score ≤5.
+
+2. **Value Change Audit** (CRITICAL)
+   - If the PR changes hardcoded values (rate limits, timeouts, thresholds, versions), list EACH change with old → new.
+   - Unjustified value changes = lower score. All changes must be explained in the PR description.
+
+3. **Scope & Bounty Integrity** (HIGH)
+   - Changes MUST match the PR title and bounty description. No unrelated modifications.
+   - If the PR modifies core infrastructure files (bridge_web.py, api_nodes.py, api_webhooks.py) beyond what the bounty requires, flag as scope creep.
+   - Identical code appearing across multiple PRs from the same author = bounty farming signal. Flag it.
+
+4. **Security** (HIGH)
+   - No vulnerabilities, backdoors, hardcoded secrets, suspicious patterns.
+   - No exposure of internal env var names or vendor-specific references in public-facing code.
+   - No removal of existing security measures.
+
+5. **Code Quality** (MEDIUM)
+   - Clean, readable, follows existing patterns in the codebase.
+   - No dead code (functions defined but never called).
+   - No duplicate logic (same thing done twice in different places).
+
+6. **Test Validity** (MEDIUM)
+   - If tests are included, verify they use real methods/APIs of the libraries involved.
+   - Tests that would throw errors on execution (e.g. calling nonexistent methods) = flag as untested.
+   - Tests that cannot actually run = worse than no tests.
+
+7. **Functionality** (MEDIUM)
+   - Does it actually solve the stated task? Fully, or partially?
+   - Does it improve features, fix bugs, or add useful capabilities?
+
+SCORING:
+- 10: Excellent, production-ready, no issues
+- 8-9: Good, minor improvements possible but safe to merge
+- 6-7: Has issues that need fixing before merge
+- 4-5: Significant problems, needs major revision
+- 1-3: Reject — breaking changes, security issues, or bounty farming
 
 A score of **8 or higher** passes initial review (subject to human approval).
+Be strict. This is a live production system handling real cryptocurrency payments.
 
 Respond ONLY with valid JSON in this exact format:
 {{
