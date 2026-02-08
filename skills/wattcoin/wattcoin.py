@@ -1,7 +1,9 @@
 """
-WattCoin Skill - CORRECTLY FIXED for solders 0.18+
+WattCoin Skill v3.0.0 — Agent toolkit for the WattCoin ecosystem.
 
-This version uses the CORRECT Transaction signing API for modern solders
+Enables agents to: check balances, send WATT, scrape URLs, discover/claim/complete tasks,
+propose bounties, interact with SwarmSolve marketplace, query WSI distributed intelligence,
+and view contributor reputation data.
 """
 
 import os
@@ -13,19 +15,6 @@ import struct
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-# WATT token decimals (6 decimals like USDC)
-WATT_DECIMALS = 6
-
-WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
-
-SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
-
-TOKEN_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-
-CONFIRMATION_TIMEOUT = 30
-
-MAX_RETRIES = 3
-
 # =============================================================================
 # CONSTANTS
 # =============================================================================
@@ -35,8 +24,9 @@ API_BASE = "https://wattcoin-production-81a7.up.railway.app"
 BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
 TREASURY_WALLET = "Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q"
 SOLANA_RPC = "https://solana.publicnode.com"
-LLM_PRICE = 500  # WATT per query
 SCRAPE_PRICE = 100  # WATT per scrape
+WSI_MIN_BALANCE = 5000  # Minimum WATT hold for WSI access
+SWARMSOLVE_MIN_BUDGET = 5000  # Minimum WATT for SwarmSolve escrow
 WATT_DECIMALS = 6
 MIN_TASK_REWARD = 500  # Minimum WATT for posting a task
 
@@ -218,7 +208,6 @@ def watt_balance_formatted(wallet_address: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
-# Closes #42
 
 def get_watt_price() -> float:
     """
@@ -268,7 +257,6 @@ def get_watt_price() -> float:
         raise APIError(f"Invalid response from DexScreener: {e}")
 
 
-# Closes #44
 
 def watt_to_usd(watt_amount: float, price_per_watt: float) -> float:
     """Convert WATT to USD. Returns rounded value."""
@@ -321,7 +309,7 @@ def validate_wallet_address(address: str) -> bool:
     return bool(re.match(base58_pattern, address))
 
 # =============================================================================
-# PAYMENTS - CORRECTLY FIXED FOR SOLDERS
+# PAYMENTS
 # =============================================================================
 
 def watt_send(to: str, amount: int, allow_insufficient_balance: bool = False) -> str:
@@ -429,79 +417,14 @@ def watt_send(to: str, amount: int, allow_insufficient_balance: bool = False) ->
             return str(result.value)
         else:
             raise TransactionError(f"Transaction failed: {result}")
-
-# =============================================================================
-# LLM QUERY
-# =============================================================================
-
-def watt_query(prompt: str, timeout_sec: int = 60) -> Dict[str, Any]:
-    """
-    Query Grok via LLM proxy. Auto-sends 500 WATT payment.
     
-    Args:
-        prompt: Question or prompt for Grok
-        timeout_sec: Request timeout in seconds
-        
-    Returns:
-        Dict with 'success', 'response', 'tokens_used', 'watt_charged', etc.
-        
-    Raises:
-        InsufficientBalanceError: If balance < 500 WATT
-        TransactionError: If payment transaction fails
-        APIError: If API request fails
-    """
-    import time
-    
-    if not prompt or not prompt.strip():
-        raise WattCoinError("Prompt cannot be empty")
-    
-    try:
-        # Step 1: Check balance
-        balance = watt_balance()
-        if balance < LLM_PRICE:
-            raise InsufficientBalanceError(
-                f"Insufficient balance for LLM query. Required: {LLM_PRICE} WATT, Have: {balance} WATT"
-            )
-        
-        # Step 2: Send payment
-        try:
-            tx_sig = watt_send(BOUNTY_WALLET, LLM_PRICE)
-        except (TransactionError, InsufficientBalanceError) as e:
-            raise APIError(f"Failed to send payment: {e}")
-        
-        # Step 3: Wait for confirmation
-        time.sleep(3)
-        
-        # Step 4: Call LLM API
-        wallet = get_wallet_address()
-        
-        try:
-            resp = requests.post(
-                f"{API_BASE}/api/v1/llm",
-                json={
-                    "prompt": prompt,
-                    "wallet": wallet,
-                    "tx_signature": tx_sig
-                },
-                timeout=timeout_sec
-            )
-            resp.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise APIError(f"LLM API request failed: {e}")
-        
-        data = resp.json()
-        
-        if not data.get("success"):
-            error_msg = data.get('message') or data.get('error') or 'Unknown error'
-            raise APIError(f"LLM query failed: {error_msg}")
-        
-        return data
-        
     except WattCoinError:
         raise
     except Exception as e:
-        _log_error("LLM_QUERY_ERROR", str(e))
-        raise APIError(f"Unexpected error in LLM query: {e}")
+        _log_error("SEND_ERROR", str(e))
+        raise TransactionError(f"Unexpected error sending WATT: {e}")
+
+
 
 # =============================================================================
 # SCRAPE
@@ -756,17 +679,20 @@ def watt_check_balance_for(operation: str) -> Dict[str, Any]:
     Check if you have enough WATT for a common operation.
     
     Args:
-        operation: 'query' (500 WATT) or 'scrape' (100 WATT)
+        operation: 'scrape' (100 WATT), 'wsi' (5000 WATT hold), or 'swarmsolve' (5000 WATT min)
         
     Returns:
         Dict with 'can_do', 'balance', 'required', etc.
     """
-    if operation == "query":
-        required = LLM_PRICE
-        op_name = "LLM query"
-    elif operation == "scrape":
+    if operation == "scrape":
         required = SCRAPE_PRICE
         op_name = "Web scrape"
+    elif operation == "wsi":
+        required = WSI_MIN_BALANCE
+        op_name = "WSI query (hold requirement)"
+    elif operation == "swarmsolve":
+        required = SWARMSOLVE_MIN_BUDGET
+        op_name = "SwarmSolve (min budget)"
     else:
         raise WattCoinError(f"Unknown operation '{operation}'")
     
@@ -871,16 +797,13 @@ def watt_estimate_cost(operation: str, count: int = 1) -> Dict[str, Any]:
     Estimate cost for operations.
     
     Args:
-        operation: 'query' or 'scrape'
+        operation: 'scrape'
         count: Number of operations
         
     Returns:
         Dict with 'total_watt', 'per_unit', 'breakdown', etc.
     """
-    if operation == "query":
-        per_unit = LLM_PRICE
-        op_name = "LLM query"
-    elif operation == "scrape":
+    if operation == "scrape":
         per_unit = SCRAPE_PRICE
         op_name = "Web scrape"
     else:
@@ -899,6 +822,417 @@ def watt_estimate_cost(operation: str, count: int = 1) -> Dict[str, Any]:
         "affordable": balance >= total
     }
 
+def watt_stats() -> Dict[str, Any]:
+    """
+    Get network-wide statistics (active nodes, jobs completed, total payouts).
+    
+    Returns:
+        Dict with 'nodes', 'jobs', 'payouts' sections
+    """
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/stats", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to get network stats: {e}")
+
+# =============================================================================
+# SWARMSOLVE — AI-Powered Software Marketplace
+# =============================================================================
+
+def watt_swarmsolve_list(status: Optional[str] = None) -> Dict[str, Any]:
+    """
+    List SwarmSolve solutions (software bounties with escrow).
+    
+    Args:
+        status: Filter by status ('open', 'approved', 'refunded', 'expired', or None for all)
+        
+    Returns:
+        Dict with 'solutions' list and 'count'
+    """
+    params = {}
+    if status:
+        params["status"] = status
+    
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/solutions", params=params, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to list solutions: {e}")
+
+def watt_swarmsolve_prepare(title: str) -> Dict[str, Any]:
+    """
+    Step 1 of 2: Prepare a SwarmSolve request. Returns escrow instructions.
+    
+    Call this BEFORE sending WATT. It returns the escrow wallet, memo format,
+    and slug needed for the submit step.
+    
+    Args:
+        title: Project title for the software request
+        
+    Returns:
+        Dict with 'slug', 'escrow_wallet', 'memo', 'instructions'
+    """
+    if not title or not title.strip():
+        raise WattCoinError("Title cannot be empty")
+    
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/solutions/prepare",
+            json={"title": title},
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            raise APIError(f"Prepare failed: {data['error']}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to prepare solution: {e}")
+
+def watt_swarmsolve_submit(
+    title: str,
+    slug: str,
+    description: str,
+    budget_watt: int,
+    escrow_tx: str,
+    customer_wallet: str,
+    target_repo: Optional[str] = None,
+    deadline_days: int = 14
+) -> Dict[str, Any]:
+    """
+    Step 2 of 2: Submit SwarmSolve request with escrow TX proof.
+    
+    Must call watt_swarmsolve_prepare() first, then send WATT to escrow wallet
+    with the provided memo, then call this with the TX signature.
+    
+    Args:
+        title: Must match what was passed to prepare
+        slug: Slug returned from prepare
+        description: Detailed spec (kept private, not posted publicly)
+        budget_watt: Amount sent (min 5,000 WATT)
+        escrow_tx: Solana TX signature proving payment
+        customer_wallet: Your wallet address
+        target_repo: GitHub repo for delivery (e.g. 'owner/repo'), optional
+        deadline_days: Days until deadline (default 14)
+        
+    Returns:
+        Dict with 'solution_id', 'approval_token' (SECRET — save this!), 'github_issue_url'
+    """
+    if budget_watt < SWARMSOLVE_MIN_BUDGET:
+        raise WattCoinError(f"Budget must be at least {SWARMSOLVE_MIN_BUDGET} WATT")
+    
+    payload = {
+        "title": title,
+        "slug": slug,
+        "description": description,
+        "budget_watt": budget_watt,
+        "escrow_tx": escrow_tx,
+        "customer_wallet": customer_wallet,
+        "privacy_acknowledged": True,
+        "deadline_days": deadline_days
+    }
+    if target_repo:
+        payload["target_repo"] = target_repo
+    
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/solutions/submit",
+            json=payload,
+            timeout=15
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            raise APIError(f"Submit failed: {data['error']}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to submit solution: {e}")
+
+def watt_swarmsolve_claim(solution_id: str, wallet: str, github_user: str) -> Dict[str, Any]:
+    """
+    Claim a SwarmSolve solution to access the full spec.
+    Requires GitHub account verification (min 30 days old, min 1 public repo).
+    
+    Args:
+        solution_id: ID of the solution to claim
+        wallet: Your Solana wallet address
+        github_user: Your GitHub username
+        
+    Returns:
+        Dict with full 'description' (spec) and claim confirmation
+    """
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/solutions/{solution_id}/claim",
+            json={"wallet": wallet, "github_user": github_user},
+            timeout=15
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            raise APIError(f"Claim failed: {data['error']}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to claim solution: {e}")
+
+def watt_swarmsolve_approve(solution_id: str, approval_token: str, pr_number: int) -> Dict[str, Any]:
+    """
+    Approve a winning PR and release escrow to the solver.
+    Only the customer (using their secret approval_token) can approve.
+    
+    Args:
+        solution_id: ID of the solution
+        approval_token: Secret token from /submit response
+        pr_number: Merged PR number on target repo
+        
+    Returns:
+        Dict with 'success', 'tx_signature' (escrow release), payout details
+    """
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/solutions/{solution_id}/approve",
+            json={"approval_token": approval_token, "pr_number": pr_number},
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            raise APIError(f"Approval failed: {data['error']}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to approve solution: {e}")
+
+# =============================================================================
+# WSI — WattCoin Distributed Intelligence (Pending Activation)
+# =============================================================================
+# NOTE: WSI endpoints are deployed but require network seed node activation.
+# Functions will return "gateway unavailable" until the distributed inference
+# network is live. Check watt_wsi_health() for current status.
+
+def watt_wsi_query(
+    wallet: str,
+    prompt: str,
+    model: Optional[str] = None,
+    max_tokens: int = 500,
+    temperature: float = 0.7,
+    timeout_sec: int = 60
+) -> Dict[str, Any]:
+    """
+    Query the WSI distributed inference network.
+    Requires holding minimum WATT balance (default 5,000 WATT — not spent, just held).
+    
+    NOTE: Pending network activation. Check watt_wsi_health() for status.
+    
+    Args:
+        wallet: Your Solana wallet (must hold minimum WATT balance)
+        prompt: Question or instruction for the AI model
+        model: Specific model (None = default swarm model)
+        max_tokens: Max response tokens (default 500)
+        temperature: Response creativity 0.0-1.0 (default 0.7)
+        timeout_sec: Request timeout in seconds
+        
+    Returns:
+        Dict with 'success', 'response', 'model', 'latency_ms', etc.
+        
+    Raises:
+        APIError: If network unavailable or wallet doesn't meet hold requirement
+    """
+    if not prompt or not prompt.strip():
+        raise WattCoinError("Prompt cannot be empty")
+    
+    payload = {
+        "wallet": wallet,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature
+    }
+    if model:
+        payload["model"] = model
+    
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/wsi/query",
+            json=payload,
+            timeout=timeout_sec
+        )
+        data = resp.json()
+        if not data.get("success"):
+            raise APIError(f"WSI query failed: {data.get('error', 'Unknown error')}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"WSI request failed: {e}")
+
+def watt_wsi_models() -> Dict[str, Any]:
+    """
+    Get available models on the WSI distributed network.
+    
+    Returns:
+        Dict with 'models' list, 'default' model, 'count'
+    """
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/wsi/models", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to get WSI models: {e}")
+
+def watt_wsi_health() -> Dict[str, Any]:
+    """
+    Check WSI service health and activation status.
+    
+    Returns:
+        Dict with 'service', 'version', 'gateway_configured', 'status'
+    """
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/wsi/health", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to check WSI health: {e}")
+
+# =============================================================================
+# REPUTATION — Contributor Merit System
+# =============================================================================
+
+def watt_reputation(github_username: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get contributor reputation/merit data.
+    
+    Args:
+        github_username: Specific contributor (None = full leaderboard)
+        
+    Returns:
+        If username: Dict with contributor's score, tier, merged PRs, earnings
+        If None: Dict with 'contributors' list, 'total_watt_earned', 'total_merged'
+    """
+    try:
+        if github_username:
+            resp = requests.get(
+                f"{API_BASE}/api/v1/reputation/{github_username}",
+                timeout=10
+            )
+        else:
+            resp = requests.get(f"{API_BASE}/api/v1/reputation", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to get reputation data: {e}")
+
+def watt_reputation_stats() -> Dict[str, Any]:
+    """
+    Get overall merit system statistics.
+    
+    Returns:
+        Dict with tier counts, total contributors, total payouts, etc.
+    """
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/reputation/stats", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to get reputation stats: {e}")
+
+# =============================================================================
+# TASK CLAIM
+# =============================================================================
+
+def watt_task_claim(task_id: str, wallet: str, agent_name: str = "agent") -> Dict[str, Any]:
+    """
+    Claim an open task before working on it.
+    
+    Args:
+        task_id: ID of the task to claim
+        wallet: Your Solana wallet address
+        agent_name: Your agent identifier (default 'agent')
+        
+    Returns:
+        Dict with 'success', claim confirmation, task details
+    """
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/tasks/{task_id}/claim",
+            json={"wallet": wallet, "agent_name": agent_name},
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("success"):
+            raise APIError(f"Task claim failed: {data.get('error', 'Unknown error')}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to claim task: {e}")
+
+# =============================================================================
+# BOUNTIES
+# =============================================================================
+
+def watt_bounties(type_filter: Optional[str] = None, status: Optional[str] = None) -> Dict[str, Any]:
+    """
+    List open bounties and agent tasks from GitHub.
+    
+    Args:
+        type_filter: 'bounty' (require stake), 'agent' (no stake), or None for all
+        status: Filter by status (e.g. 'open')
+        
+    Returns:
+        Dict with 'bounties' list and summary stats
+    """
+    params = {}
+    if type_filter:
+        params["type"] = type_filter
+    if status:
+        params["status"] = status
+    
+    try:
+        resp = requests.get(f"{API_BASE}/api/v1/bounties", params=params, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to list bounties: {e}")
+
+def watt_bounty_propose(
+    title: str,
+    description: str,
+    category: str,
+    wallet: str,
+    api_key: str
+) -> Dict[str, Any]:
+    """
+    Propose a new bounty for AI evaluation and auto-creation.
+    Agent proposes improvement → AI evaluates/prices → auto-creates bounty issue if approved.
+    
+    Args:
+        title: Bounty title (e.g. 'Add rate limiting to API')
+        description: Detailed description of the improvement
+        category: Category (e.g. 'wattnode', 'swarmsolve', 'core')
+        wallet: Your Solana wallet address
+        api_key: Your agent API key (X-API-Key header)
+        
+    Returns:
+        Dict with 'success', 'decision' (APPROVED/REJECTED), 'issue_url', 'amount', 'score'
+    """
+    try:
+        resp = requests.post(
+            f"{API_BASE}/api/v1/bounties/propose",
+            headers={"X-API-Key": api_key},
+            json={
+                "title": title,
+                "description": description,
+                "category": category,
+                "wallet": wallet
+            },
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            raise APIError(f"Proposal failed: {data['error']}")
+        return data
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Failed to propose bounty: {e}")
+
 # =============================================================================
 # MAIN EXPORTS
 # =============================================================================
@@ -907,15 +1241,47 @@ __all__ = [
     # Wallet operations
     "get_wallet_address",
     "watt_balance",
+    "watt_balance_formatted",
     "watt_send",
+    "validate_wallet_address",
     
-    # API operations
-    "watt_query",
+    # Price / formatting
+    "get_watt_price",
+    "watt_to_usd",
+    "format_watt_amount",
+    
+    # Web scraper
     "watt_scrape",
+    
+    # Tasks
     "watt_tasks",
+    "watt_task_claim",
     "watt_submit",
     "watt_post_task",
+    
+    # Bounties
+    "watt_bounties",
+    "watt_bounty_propose",
+    
+    # SwarmSolve
+    "watt_swarmsolve_list",
+    "watt_swarmsolve_prepare",
+    "watt_swarmsolve_submit",
+    "watt_swarmsolve_claim",
+    "watt_swarmsolve_approve",
+    
+    # WSI — Distributed Intelligence (pending activation)
+    "watt_wsi_query",
+    "watt_wsi_models",
+    "watt_wsi_health",
+    
+    # Reputation
+    "watt_reputation",
+    "watt_reputation_stats",
+    
+    # WattNode
     "get_node_earnings",
+    "watt_stats",
     
     # Helper functions
     "watt_check_balance_for",
@@ -930,3 +1296,4 @@ __all__ = [
     "InsufficientBalanceError",
     "TransactionError",
 ]
+
