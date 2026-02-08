@@ -157,7 +157,7 @@ limiter.limit(RateLimitConfig.TASKS)(tasks_bp)  # Task queries - moderate limit
 limiter.limit(RateLimitConfig.NODES_READ)(nodes_bp)  # Node queries - moderate limit
 limiter.limit(RateLimitConfig.BOUNTY_READ)(pr_review_bp)  # PR review queries - moderate limit
 limiter.limit(RateLimitConfig.UI_WSI)(wsi_bp)  # WSI interface - higher limit for UI
-limiter.limit(RateLimitConfig.SCRAPE)(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
+limiter.limit(RateLimitConfig.SWARMSOLVE)(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
 # Admin blueprint - no additional limit (inherits global defaults)
 
 logger.info("Blueprint-specific rate limits applied successfully")
