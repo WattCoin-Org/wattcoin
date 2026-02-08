@@ -756,7 +756,7 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
 def load_banned_users():
     """Load banned users list from data file + hardcoded permanent bans."""
     # Hardcoded permanent bans (cannot be bypassed by data file deletion)
-    PERMANENT_BANS = {"ohmygod20260203"}
+    PERMANENT_BANS = {"ohmygod20260203", "eugenejarvis88"}
     
     banned_file = os.path.join(DATA_DIR, "banned_users.json")
     try:
