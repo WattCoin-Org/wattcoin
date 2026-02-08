@@ -176,7 +176,7 @@
 - Pass threshold raised 8/10 → 9/10
 - Ban system + wallet requirement gate enforced
 - Privacy protection guide + quick checklist created
-- cb3tech GitHub exposure fix (8 PR reviews reposted as WattCoin-Org)
+- GitHub identity cleanup (8 PR reviews reposted under project organization account)
 - Clickable feature boxes (11 of 13 cards linked)
 - "On-Chain Escrow" moved from Coming Soon to live (SwarmSolve)
 
