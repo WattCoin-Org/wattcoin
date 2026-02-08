@@ -43,6 +43,8 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from flask import Flask, render_template_string, request, session, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from anthropic import Anthropic
 from openai import OpenAI
 
@@ -64,6 +66,30 @@ from scraper_errors import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
+
+# =============================================================================
+# RATE LIMITING
+# =============================================================================
+RATE_LIMIT_DEFAULT = os.getenv("RATE_LIMIT_DEFAULT", "60/minute")
+RATE_LIMIT_SCRAPE = os.getenv("RATE_LIMIT_SCRAPE", "30/minute")
+RATE_LIMIT_LLM = os.getenv("RATE_LIMIT_LLM", "20/minute")
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[RATE_LIMIT_DEFAULT],
+    storage_uri="memory://",
+    headers_enabled=True  # X-RateLimit-* headers
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Custom 429 response with Retry-After header."""
+    return jsonify({
+        'error': 'rate_limit_exceeded',
+        'message': str(e.description),
+        'retry_after': e.description.split('retry after ')[1] if 'retry after' in str(e.description) else '60'
+    }), 429
 
 # =============================================================================
 # LOGGING
@@ -770,6 +796,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(RATE_LIMIT_SCRAPE)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1146,6 +1173,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit(RATE_LIMIT_LLM)
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1359,6 +1387,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(RATE_LIMIT_DEFAULT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1397,6 +1426,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(RATE_LIMIT_DEFAULT)
 def bounty_stats():
     """
     Public bounty statistics for website.
