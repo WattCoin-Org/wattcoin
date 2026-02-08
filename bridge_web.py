@@ -87,14 +87,26 @@ CORS(app, origins=[
     "http://localhost:3000"
 ])
 
-# =============================================================================
-# RATE LIMITING (Flask-Limiter)
-# =============================================================================
-from extensions import limiter
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from config_rates import RateLimitConfig
 
-# Initialize Flask-Limiter with Centralized Config
-limiter.init_app(app)
+# =============================================================================
+# RATE LIMITING (Flask-Limiter)
+# CENTRALIZED CONFIG JUSTIFICATION:
+# Centralizing rate limit values in config_rates.py allows for consistent 
+# enforcement across blueprints and easy tuning via environment variables.
+# =============================================================================
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[RateLimitConfig.DEFAULT],
+    storage_uri=os.getenv("REDIS_URL", "memory://"), # Original fallback pattern
+    strategy="fixed-window"
+)
+
+# Logger for rate limiting status
+logger.info(f"Flask-Limiter running with centralized limits: {RateLimitConfig.DEFAULT}")
 
 # Custom rate limit error handler
 @app.errorhandler(429)
@@ -105,8 +117,6 @@ def ratelimit_handler(e):
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
     }), 429
-
-logger.info(f"Flask-Limiter running with centralized limits: {RateLimitConfig.DEFAULT}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
