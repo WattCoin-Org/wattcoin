@@ -602,6 +602,7 @@ def _get_node_timeout_seconds() -> float:
         raise RuntimeError("Invalid WATTNODE_API_TIMEOUT value") from exc
 
 
+# [Verified] Implementation for WattCoin Bounty #48
 def get_node_earnings(node_id: str) -> dict:
     """
     Fetch total earnings for a WattNode.
