@@ -1344,17 +1344,49 @@ def proxy_moltbook():
         return jsonify({'error': f'Moltbook proxy error: {str(e)}'}), 500
 
 
+_health_start_time = time.time()
+
 @app.route('/health')
 def health():
+    """Extended health check (Bounty #90) - adds service checks while preserving all existing fields."""
     active_nodes = len(get_active_nodes())
+    
+    # Service checks (simple exists/configured per requirements)
+    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    db_ok = os.path.isdir(data_dir)
+    discord_ok = bool(os.getenv('DISCORD_WEBHOOK_URL'))
+    ai_ok = bool(ai_client or claude_client)
+    
+    # Count open tasks
+    open_tasks = 0
+    try:
+        tasks_file = os.path.join(data_dir, 'tasks.json')
+        if os.path.exists(tasks_file):
+            with open(tasks_file, 'r') as f:
+                tasks = json.load(f)
+                open_tasks = len([t for t in tasks if t.get('status') in ('open', 'claimed')])
+    except Exception:
+        pass  # Fail silently per requirements
+    
     return jsonify({
-        'status': 'ok', 
+        # === EXISTING FIELDS (unchanged for backward compatibility) ===
+        'status': 'ok',
         'version': '3.4.0',
         'ai': bool(ai_client), 
         'claude': bool(claude_client),
         'proxy': True,
         'admin': True,
-        'active_nodes': active_nodes
+        'active_nodes': active_nodes,
+        # === NEW FIELDS (Bounty #90) ===
+        'health_status': 'healthy' if (db_ok and ai_ok) else 'degraded',
+        'uptime_seconds': int(time.time() - _health_start_time),
+        'services': {
+            'database': 'ok' if db_ok else 'error',
+            'discord': 'ok' if discord_ok else 'not_configured',
+            'ai_api': 'ok' if ai_ok else 'error'
+        },
+        'open_tasks': open_tasks,
+        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     })
 
 
