@@ -87,22 +87,30 @@ CORS(app, origins=[
     "http://localhost:3000"
 ])
 
-# =============================================================================
-# RATE LIMITING (Flask-Limiter)
-# =============================================================================
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from config_rates import RateLimitConfig
 
-# Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
+# =============================================================================
+# RATE LIMITING (Flask-Limiter)
+# CENTRALIZED CONFIG JUSTIFICATION:
+# Centralizing rate limit values in config_rates.py allows for consistent 
+# enforcement across blueprints and easy tuning via environment variables.
+# =============================================================================
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
-    storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
+    default_limits=RateLimitConfig.DEFAULT,
+    storage_uri=os.getenv("REDIS_URL", "memory://"),
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
-    headers_enabled=True,  # Add X-RateLimit-* headers to responses
+    headers_enabled=True,
+    swallow_errors=True,
+    in_memory_fallback_enabled=True
 )
+
+# Logger for rate limiting status
+logger.info(f"Flask-Limiter running with centralized limits: {RateLimitConfig.DEFAULT}")
 
 # Custom rate limit error handler
 @app.errorhandler(429)
@@ -113,8 +121,6 @@ def ratelimit_handler(e):
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
     }), 429
-
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -143,15 +149,15 @@ app.register_blueprint(swarmsolve_bp)
 app.register_blueprint(backup_bp)
 
 # Apply endpoint-specific rate limits after blueprint registration
-limiter.limit("10 per minute")(llm_bp)  # LLM queries are expensive - strict limit
-limiter.limit("100 per minute")(bounties_bp)  # Stats/queries - moderate limit
-limiter.limit("100 per minute")(reputation_bp)  # Stats/queries - moderate limit
-limiter.limit("50 per minute")(webhooks_bp)  # Webhooks - moderate limit
-limiter.limit("100 per minute")(tasks_bp)  # Task queries - moderate limit
-limiter.limit("100 per minute")(nodes_bp)  # Node queries - moderate limit
-limiter.limit("100 per minute")(pr_review_bp)  # PR review queries - moderate limit
-limiter.limit("200 per minute")(wsi_bp)  # WSI interface - higher limit for UI
-limiter.limit("20 per minute")(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
+limiter.limit(RateLimitConfig.LLM)(llm_bp)  # LLM queries are expensive - strict limit
+limiter.limit(RateLimitConfig.BOUNTY_READ)(bounties_bp)  # Stats/queries - moderate limit
+limiter.limit(RateLimitConfig.BOUNTY_READ)(reputation_bp)  # Stats/queries - moderate limit
+limiter.limit(RateLimitConfig.WEBHOOKS)(webhooks_bp)  # Webhooks - moderate limit
+limiter.limit(RateLimitConfig.TASKS)(tasks_bp)  # Task queries - moderate limit
+limiter.limit(RateLimitConfig.NODES_READ)(nodes_bp)  # Node queries - moderate limit
+limiter.limit(RateLimitConfig.BOUNTY_READ)(pr_review_bp)  # PR review queries - moderate limit
+limiter.limit(RateLimitConfig.UI_WSI)(wsi_bp)  # WSI interface - higher limit for UI
+limiter.limit(RateLimitConfig.SWARMSOLVE)(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
 # Admin blueprint - no additional limit (inherits global defaults)
 
 logger.info("Blueprint-specific rate limits applied successfully")
