@@ -225,6 +225,12 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
     Update contributor reputation after an event.
     Events: 'merge', 'reject', 'revert'
     """
+    # Skip system/org accounts
+    SYSTEM_ACCOUNTS = {"wattcoin-org"}
+    if github_username.lower() in SYSTEM_ACCOUNTS:
+        print(f"[REPUTATION] Skipping system account: {github_username}", flush=True)
+        return {"github": github_username, "score": 0, "tier": "system"}
+    
     data = load_reputation_data()
     contributors = data.get("contributors", {})
     
