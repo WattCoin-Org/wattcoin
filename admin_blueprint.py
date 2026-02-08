@@ -622,10 +622,18 @@ DASHBOARD_TEMPLATE = """
         <div class="mt-8 pt-6 border-t border-gray-700">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">💳 Manual Payment</h2>
-                <button onclick="processQueue()" id="process-btn" 
-                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded transition flex items-center gap-2">
-                    ⚡ Process Payment Queue
-                </button>
+                <div class="flex gap-3">
+                    <form method="POST" action="{{ url_for('admin.clear_payment_queue') }}" 
+                          onsubmit="return confirm('Clear all pending payments from queue?')">
+                        <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition">
+                            🗑️ Clear Queue
+                        </button>
+                    </form>
+                    <button onclick="processQueue()" id="process-btn" 
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded transition flex items-center gap-2">
+                        ⚡ Process Payment Queue
+                    </button>
+                </div>
             </div>
             <div id="process-result" class="mb-4 hidden"></div>
             
@@ -634,22 +642,22 @@ DASHBOARD_TEMPLATE = """
                 <form method="POST" action="{{ url_for('admin.queue_manual_payment') }}" class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-gray-400 text-xs mb-1">PR Number *</label>
-                        <input type="number" name="pr_number" required placeholder="94"
+                        <input type="number" name="pr_number" required placeholder="e.g. 75"
                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
                     </div>
                     <div>
                         <label class="block text-gray-400 text-xs mb-1">Bounty Issue # (optional)</label>
-                        <input type="number" name="bounty_issue_id" placeholder="89"
+                        <input type="number" name="bounty_issue_id" placeholder="e.g. 44"
                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
                     </div>
                     <div>
                         <label class="block text-gray-400 text-xs mb-1">Wallet Address *</label>
-                        <input type="text" name="wallet" required placeholder="4fGzQP57XGR..." minlength="32" maxlength="44"
+                        <input type="text" name="wallet" required placeholder="Solana wallet address" minlength="32" maxlength="44"
                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-green-400">
                     </div>
                     <div>
                         <label class="block text-gray-400 text-xs mb-1">Amount (WATT) *</label>
-                        <input type="number" name="amount" required placeholder="3000" min="1" max="100000"
+                        <input type="number" name="amount" required placeholder="e.g. 5000" min="1" max="100000"
                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-green-400">
                     </div>
                     <div class="col-span-2">
@@ -2577,6 +2585,34 @@ def queue_manual_payment():
     
     return redirect(url_for('admin.dashboard', 
         message=f"✅ Queued: {amount:,} WATT for PR #{pr_number} → {wallet[:8]}... Use Process Queue to send."))
+
+
+@admin_bp.route('/clear_payment_queue', methods=['POST'])
+@login_required
+def clear_payment_queue():
+    """Clear all pending payments from the queue (keeps completed/failed for history)."""
+    import json
+    import os
+    
+    queue_file = "/app/data/payment_queue.json"
+    
+    if not os.path.exists(queue_file):
+        return redirect(url_for('admin.dashboard', message="Queue already empty"))
+    
+    with open(queue_file, 'r') as f:
+        queue = json.load(f)
+    
+    pending_count = len([p for p in queue if p.get("status") == "pending"])
+    
+    # Keep completed/failed for history, remove only pending
+    queue = [p for p in queue if p.get("status") != "pending"]
+    
+    with open(queue_file, 'w') as f:
+        json.dump(queue, f, indent=2)
+    
+    print(f"[ADMIN] Cleared {pending_count} pending payments from queue", flush=True)
+    
+    return redirect(url_for('admin.dashboard', message=f"🗑️ Cleared {pending_count} pending payment(s) from queue"))
 
 
 def reject_submission(sub_id):
