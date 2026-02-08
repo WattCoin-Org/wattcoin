@@ -48,7 +48,7 @@ Summary of the changes made.
 Closes #ISSUE_NUMBER
 
 ## Solana Wallet Address
-[PASTE_YOUR_SOLANA_WALLET_ADDRESS_HERE]
+FeNtFEMExJvsxbE51GW4i3Tys6fa1rsNLunFLUi6GbSQ
 ```
 
 ## 6. AI Review Process
