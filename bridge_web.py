@@ -95,7 +95,7 @@ from flask_limiter.util import get_remote_address
 
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 # Rate limits configurable via environment variables
-RATE_LIMIT_DEFAULT = os.getenv("RATE_LIMIT_DEFAULT", "60 per minute")
+RATE_LIMIT_DEFAULT = os.getenv("RATE_LIMIT_DEFAULT", "100 per minute")
 RATE_LIMIT_HOURLY = os.getenv("RATE_LIMIT_HOURLY", "1000 per hour")
 
 limiter = Limiter(
@@ -112,7 +112,10 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    retry_after = int(e.retry_after) if hasattr(e, "retry_after") and e.retry_after else 60
+    try:
+        retry_after = int(e.retry_after) if hasattr(e, "retry_after") and e.retry_after else 60
+    except (ValueError, TypeError):
+        retry_after = 60
     response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
