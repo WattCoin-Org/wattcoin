@@ -1,6 +1,6 @@
 """
-WattNode API - Node registration, job routing, payouts
-v2.3.0 - Added /api/v1/stats endpoint
+WattNode API - Node registration, job routing, payouts, reliability scoring
+v3.0.0 - Added node reliability scoring, tier bonuses, priority routing
 """
 
 from flask import Blueprint, request, jsonify
@@ -35,6 +35,77 @@ JOB_TIMEOUT = 30  # seconds - job expires if not completed
 NODE_SHARE = 70
 TREASURY_SHARE = 20
 BURN_SHARE = 10
+
+# Reliability scoring
+RELIABILITY_TIERS = {
+    "gold":   {"min": 70, "emoji": "🥇", "bonus_pct": 15},
+    "silver": {"min": 40, "emoji": "🥈", "bonus_pct": 5},
+    "bronze": {"min": 0,  "emoji": "🥉", "bonus_pct": 0}
+}
+
+def get_node_tier(score):
+    """Return tier name based on reliability score."""
+    if score >= RELIABILITY_TIERS["gold"]["min"]:
+        return "gold"
+    elif score >= RELIABILITY_TIERS["silver"]["min"]:
+        return "silver"
+    return "bronze"
+
+def calculate_reliability(node):
+    """
+    Calculate node reliability score (0-100).
+    Components:
+      - Uptime (0-40): heartbeat consistency since registration
+      - Completion rate (0-40): completed / (completed + failed)
+      - Volume bonus (0-20): scaled trust, maxes at 50+ jobs
+    """
+    score = 0.0
+    
+    # --- Uptime (0-40) ---
+    registered = node.get("registered_at", "")
+    last_hb = node.get("last_heartbeat", "")
+    if registered and last_hb:
+        try:
+            reg_dt = datetime.fromisoformat(registered.replace('Z', '+00:00'))
+            hb_dt = datetime.fromisoformat(last_hb.replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            
+            age_secs = max((now - reg_dt).total_seconds(), 1)
+            since_hb = (now - hb_dt).total_seconds()
+            
+            # Ratio of "alive" time — penalize if heartbeat is stale
+            if since_hb <= HEARTBEAT_TIMEOUT:
+                uptime_ratio = 1.0
+            elif since_hb < 600:  # 10 min grace
+                uptime_ratio = 0.7
+            elif since_hb < 3600:  # 1 hour
+                uptime_ratio = 0.3
+            else:
+                uptime_ratio = 0.0
+            
+            # Longevity bonus: nodes online > 24h get slight boost
+            longevity = min(age_secs / 86400, 1.0)  # cap at 1 day
+            score += (uptime_ratio * 35) + (longevity * 5)
+        except:
+            pass
+    
+    # --- Completion rate (0-40) ---
+    completed = node.get("jobs_completed", 0)
+    failed = node.get("jobs_failed", 0)
+    total = completed + failed
+    if total > 0:
+        rate = completed / total
+        score += rate * 40
+    else:
+        # No jobs yet — neutral, give 20/40
+        score += 20
+    
+    # --- Volume bonus (0-20) ---
+    # Scales linearly to 50 completed jobs
+    volume = min(completed / 50, 1.0) if completed > 0 else 0.0
+    score += volume * 20
+    
+    return round(min(score, 100), 1)
 
 # === Storage Helpers ===
 def load_nodes():
@@ -237,7 +308,7 @@ def is_node_active(node: dict) -> bool:
         return False
 
 def get_active_nodes(capability: str = None) -> list:
-    """Get list of active nodes, optionally filtered by capability"""
+    """Get list of active nodes, optionally filtered by capability. Sorted by reliability (highest first)."""
     data = load_nodes()
     active = []
     for node_id, node in data.get("nodes", {}).items():
@@ -248,6 +319,8 @@ def get_active_nodes(capability: str = None) -> list:
         if capability and capability not in node.get("capabilities", []):
             continue
         active.append({"node_id": node_id, **node})
+    # Higher reliability = priority routing
+    active.sort(key=lambda n: n.get("reliability_score", 0), reverse=True)
     return active
 
 # === API Endpoints ===
@@ -312,7 +385,9 @@ def register_node():
         "jobs_completed": 0,
         "jobs_failed": 0,
         "total_earned": 0,
-        "status": "active"
+        "status": "active",
+        "reliability_score": 20.0,
+        "tier": "bronze"
     }
     
     save_nodes(data)
@@ -356,12 +431,38 @@ def node_heartbeat():
     new_name = body.get('name')
     if new_name and isinstance(new_name, str) and len(new_name) <= 64:
         data["nodes"][node_id]["name"] = new_name.strip()
+    
+    # Recalculate reliability score
+    node = data["nodes"][node_id]
+    old_tier = node.get("tier", "bronze")
+    new_score = calculate_reliability(node)
+    node["reliability_score"] = new_score
+    new_tier = get_node_tier(new_score)
+    node["tier"] = new_tier
+    
     save_nodes(data)
+    
+    # Tier promotion notification
+    tier_order = ["bronze", "silver", "gold"]
+    if tier_order.index(new_tier) > tier_order.index(old_tier):
+        try:
+            from api_webhooks import notify_discord
+            tier_info = RELIABILITY_TIERS[new_tier]
+            notify_discord(
+                f"{tier_info['emoji']} Node Tier Promotion",
+                f"**{node.get('name', node_id)}** promoted to **{new_tier.title()}**",
+                color=0x9B59B6,
+                fields={"Score": f"{new_score}/100", "Bonus": f"+{tier_info['bonus_pct']}% payouts"}
+            )
+        except ImportError:
+            pass
     
     return jsonify({
         "success": True,
         "node_id": node_id,
-        "status": data["nodes"][node_id]["status"]
+        "status": data["nodes"][node_id]["status"],
+        "reliability_score": new_score,
+        "tier": new_tier
     })
 
 @nodes_bp.route('/api/v1/nodes/jobs', methods=['GET'])
@@ -492,24 +593,54 @@ def complete_job(job_id):
     jobs_data["jobs"][job_id] = job
     save_jobs(jobs_data)
     
-    # Update node stats
+    # Update node stats + reliability
     nodes_data = load_nodes()
     node = nodes_data.get("nodes", {}).get(node_id)
     node_wallet = None
+    tier_bonus = 0
     if node:
         node["jobs_completed"] = node.get("jobs_completed", 0) + 1
-        node["total_earned"] = node.get("total_earned", 0) + job.get("node_reward", 0)
         node["last_heartbeat"] = now
         node_wallet = node.get("wallet")
+        
+        # Recalculate reliability and tier
+        old_tier = node.get("tier", "bronze")
+        node["reliability_score"] = calculate_reliability(node)
+        new_tier = get_node_tier(node["reliability_score"])
+        node["tier"] = new_tier
+        
+        # Calculate tier bonus
+        bonus_pct = RELIABILITY_TIERS.get(new_tier, {}).get("bonus_pct", 0)
+        base_reward = job.get("node_reward", 0)
+        tier_bonus = int(base_reward * bonus_pct / 100) if bonus_pct > 0 else 0
+        total_reward = base_reward + tier_bonus
+        
+        node["total_earned"] = node.get("total_earned", 0) + total_reward
         save_nodes(nodes_data)
+        
+        # Tier promotion notification
+        tier_order = ["bronze", "silver", "gold"]
+        if tier_order.index(new_tier) > tier_order.index(old_tier):
+            try:
+                from api_webhooks import notify_discord
+                tier_info = RELIABILITY_TIERS[new_tier]
+                notify_discord(
+                    f"{tier_info['emoji']} Node Tier Promotion",
+                    f"**{node.get('name', node_id)}** promoted to **{new_tier.title()}**",
+                    color=0x9B59B6,
+                    fields={"Score": f"{node['reliability_score']}/100", "Bonus": f"+{tier_info['bonus_pct']}% payouts"}
+                )
+            except ImportError:
+                pass
     
-    # Auto-payout to node wallet
+    # Auto-payout to node wallet (base + tier bonus)
     payout_status = "pending"
     payout_tx = None
     payout_error = None
+    payout_amount = job.get("node_reward", 0) + tier_bonus
     
-    if node_wallet and job.get("node_reward", 0) > 0:
-        success, result_msg = send_node_payout(node_wallet, job.get("node_reward"))
+    if node_wallet and payout_amount > 0:
+        success, result_msg = send_node_payout(node_wallet, payout_amount)
         if success:
             payout_status = "paid"
             payout_tx = result_msg
@@ -525,12 +656,14 @@ def complete_job(job_id):
     try:
         from api_webhooks import notify_discord
         job_type = job.get("type", "task")
-        reward = job.get("node_reward", 0)
+        reward_str = f"{payout_amount:,} WATT" if payout_amount else "N/A"
+        if tier_bonus > 0:
+            reward_str += f" (incl. +{tier_bonus:,} tier bonus)"
         notify_discord(
             "📦 Job Completed",
             f"**{job_type.title()}** job completed by node",
             color=0x3498DB,
-            fields={"Reward": f"{reward:,} WATT" if reward else "N/A", "Status": payout_status.title()}
+            fields={"Reward": reward_str, "Status": payout_status.title()}
         )
     except ImportError:
         pass
@@ -540,7 +673,11 @@ def complete_job(job_id):
         "job_id": job_id,
         "status": "completed",
         "reward": job.get("node_reward"),
-        "payout_status": payout_status
+        "tier_bonus": tier_bonus,
+        "total_payout": payout_amount,
+        "payout_status": payout_status,
+        "reliability_score": node.get("reliability_score") if node else None,
+        "tier": node.get("tier") if node else None
     }
     
     if payout_tx:
@@ -565,11 +702,13 @@ def list_nodes():
             "status": "active" if active else "inactive",
             "jobs_completed": node.get("jobs_completed", 0),
             "total_earned": node.get("total_earned", 0),
-            "registered_at": node.get("registered_at")
+            "registered_at": node.get("registered_at"),
+            "reliability_score": node.get("reliability_score", 0),
+            "tier": node.get("tier", "bronze")
         })
     
-    # Sort by jobs completed
-    nodes_list.sort(key=lambda x: x.get("jobs_completed", 0), reverse=True)
+    # Sort by reliability score (highest first)
+    nodes_list.sort(key=lambda x: x.get("reliability_score", 0), reverse=True)
     
     return jsonify({
         "success": True,
@@ -597,7 +736,9 @@ def get_node(node_id):
         "jobs_failed": node.get("jobs_failed", 0),
         "total_earned": node.get("total_earned", 0),
         "registered_at": node.get("registered_at"),
-        "stake_amount": node.get("stake_amount")
+        "stake_amount": node.get("stake_amount"),
+        "reliability_score": node.get("reliability_score", 0),
+        "tier": node.get("tier", "bronze")
     })
 
 @nodes_bp.route('/api/v1/stats', methods=['GET'])
@@ -612,6 +753,16 @@ def get_network_stats():
     # Node stats
     total_nodes = len(nodes)
     active_nodes = sum(1 for n in nodes.values() if is_node_active(n))
+    
+    # Tier distribution
+    tier_counts = {"gold": 0, "silver": 0, "bronze": 0}
+    avg_reliability = 0.0
+    for n in nodes.values():
+        tier = n.get("tier", "bronze")
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+        avg_reliability += n.get("reliability_score", 0)
+    if total_nodes > 0:
+        avg_reliability = round(avg_reliability / total_nodes, 1)
     
     # Aggregate from nodes
     total_jobs_from_nodes = sum(n.get("jobs_completed", 0) for n in nodes.values())
@@ -644,6 +795,10 @@ def get_network_stats():
             "active": active_nodes,
             "inactive": total_nodes - active_nodes
         },
+        "reliability": {
+            "avg_score": avg_reliability,
+            "tiers": tier_counts
+        },
         "jobs": {
             "total_completed": total_jobs_from_nodes,
             "total_paid": paid_jobs
@@ -666,7 +821,7 @@ def health_check():
         "status": "ok",
         "uptime_seconds": int(time.time() - START_TIME),
         "active_jobs": active_jobs,
-        "version": "3.0.0"
+        "version": "3.1.0"
     })
 
 # === Job Creation Helper (called by scraper/inference endpoints) ===
