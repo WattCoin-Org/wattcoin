@@ -23,14 +23,10 @@ def test_pricing_returns_rate_limit_headers():
 def test_rate_limit_429_has_retry_after():
     """Verify 429 response includes Retry-After header."""
     client = bridge_web.app.test_client()
-    # Hit /health many times to trigger the rate limit (120/min)
-    # Use a low-limit endpoint instead: create a tight limit scenario
-    # We test the error handler format directly
     with bridge_web.app.test_request_context():
         from werkzeug.exceptions import TooManyRequests
         err = TooManyRequests()
         response = bridge_web.ratelimit_handler(err)
-        # ratelimit_handler returns a Response object
         assert response.status_code == 429
         assert "Retry-After" in response.headers
         data = response.get_json()
