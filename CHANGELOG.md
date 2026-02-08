@@ -1,3 +1,27 @@
+## [February 8, 2026 - WSI v2.1.0] - Operational Config & Rate Limiting
+
+### Configurable Payout Split
+- Node operator payout percentage now configurable via environment variable (default 70%)
+- Query cost configurable via environment variable (default 50 WATT)
+- Treasury share calculated automatically (100% minus node percentage)
+- Payout queue records node reward, treasury share, split percentage, and query cost for full auditability
+
+### Hourly Rate Limiting
+- Per-wallet hourly query limit (default 10/hr, configurable via environment variable)
+- Global hourly query limit across all wallets (default 100/hr, configurable via environment variable)
+- In-memory tracking with automatic cleanup of expired entries
+- Both query endpoint and legacy chat endpoint protected
+- Returns 429 with descriptive message when limits exceeded
+
+### Config Consolidation
+- All access requirements now configurable via environment variables: minimum balance, daily limit, hourly limits
+- No code changes required to tune any operational parameter
+- Defaults match all previous behavior
+
+### Cleanup
+- Removed old chatbot HTML page (replaced by distributed inference API in v2.0.0)
+- Fixed frontend build chunk size warning
+
 ## [February 8, 2026 - v3.10.1] - Discord Notification Cleanup
 
 ### Discord Notification Cleanup
