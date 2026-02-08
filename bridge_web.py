@@ -110,13 +110,19 @@ limiter = Limiter(
 # Custom rate limit error handler
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    retry_after = getattr(e, "description", "60")
+    logger.warning("Rate limit exceeded: %s - %s", request.remote_addr, request.path)
+    # Extract retry_after from the exception, with safe fallback
+    try:
+        retry_after = str(getattr(e, "description", "60"))
+        # Validate it's a reasonable value
+        int(retry_after)
+    except (ValueError, TypeError):
+        retry_after = "60"
     return jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": retry_after
-    }), 429, {"Retry-After": str(retry_after)}
+    }), 429, {"Retry-After": retry_after}
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
 
@@ -1389,8 +1395,15 @@ def health():
     overall_status = "healthy" if any(s == "ok" for s in critical_services) else "degraded"
     
     return jsonify({
-        "status": overall_status,
+        # Original fields (backward compatibility)
+        "status": "ok" if overall_status == "healthy" else "degraded",
         "version": "3.4.0",
+        "ai": bool(ai_client),
+        "claude": bool(claude_client),
+        "proxy": True,
+        "admin": True,
+        "active_nodes": active_nodes,
+        # Enhanced fields (Issue #90)
         "uptime_seconds": uptime_seconds,
         "services": services,
         "network": {

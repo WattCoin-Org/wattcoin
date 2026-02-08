@@ -313,8 +313,6 @@ def should_auto_merge(pr_author, review_score):
     
     if tier == "flagged":
         return False, tier, "Contributor is flagged — admin review required"
-    if tier == "new":
-        return False, tier, "New contributor — admin review required"
     if review_score < 9:
         return False, tier, f"Score {review_score}/10 below quality floor (requires ≥9)"
     

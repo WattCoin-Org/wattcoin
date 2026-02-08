@@ -105,16 +105,23 @@ class TestHealthCheck:
         response = client.get('/health')
         data = response.get_json()
         
-        # Required top-level fields
+        # Original fields (backward compatibility)
         assert "status" in data
         assert "version" in data
+        assert "ai" in data
+        assert "claude" in data
+        assert "proxy" in data
+        assert "admin" in data
+        assert "active_nodes" in data
+        
+        # Enhanced fields (Issue #90)
         assert "uptime_seconds" in data
         assert "services" in data
         assert "network" in data
         assert "timestamp" in data
         
         # Check status values
-        assert data["status"] in ["healthy", "degraded"]
+        assert data["status"] in ["ok", "degraded"]
         
         # Check version format
         assert isinstance(data["version"], str)
@@ -166,6 +173,20 @@ class TestHealthCheck:
             datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
         except ValueError:
             pytest.fail("Timestamp is not valid ISO 8601 format")
+    
+    def test_health_backward_compatibility(self, client):
+        """Test that original health endpoint fields are preserved."""
+        response = client.get('/health')
+        data = response.get_json()
+        
+        # Original fields must exist with correct types
+        assert data["status"] in ["ok", "degraded"]
+        assert isinstance(data["version"], str)
+        assert isinstance(data["ai"], bool)
+        assert isinstance(data["claude"], bool)
+        assert data["proxy"] is True
+        assert data["admin"] is True
+        assert isinstance(data["active_nodes"], int)
     
     def test_health_uptime_increases(self, client):
         """Test that uptime increases over time."""

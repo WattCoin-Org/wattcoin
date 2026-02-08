@@ -183,9 +183,10 @@ def list_reputation():
     """List all contributors and their merit reputation."""
     all_contributors = build_contributor_list()
     
-    # Separate banned users — show count only, not individual entries
+    # Separate banned/flagged users — show counts only, not individual entries
     banned = [c for c in all_contributors if c.get("tier") == "banned"]
-    contributors = [c for c in all_contributors if c.get("tier") != "banned"]
+    flagged = [c for c in all_contributors if c.get("tier") == "flagged"]
+    contributors = [c for c in all_contributors if c.get("tier") not in ("banned", "flagged")]
     
     total_watt = sum(c["total_watt_earned"] for c in contributors)
     total_merged = sum(len(c["merged_prs"]) for c in contributors)
@@ -195,11 +196,13 @@ def list_reputation():
         "total": len(contributors),
         "contributors": contributors,
         "banned_count": len(banned),
+        "flagged_count": len(flagged),
         "stats": {
             "total_contributors": len(contributors),
             "total_merged_prs": total_merged,
             "total_watt_distributed": total_watt,
             "banned_users": len(banned),
+            "flagged_users": len(flagged),
             "last_updated": datetime.utcnow().isoformat() + "Z"
         },
         "tiers": TIER_INFO,
@@ -241,7 +244,8 @@ def get_stats():
     all_contributors = build_contributor_list()
     
     banned = [c for c in all_contributors if c.get("tier") == "banned"]
-    active = [c for c in all_contributors if c.get("tier") != "banned"]
+    flagged = [c for c in all_contributors if c.get("tier") == "flagged"]
+    active = [c for c in all_contributors if c.get("tier") not in ("banned", "flagged")]
     
     tier_counts = {}
     for c in active:
@@ -256,6 +260,6 @@ def get_stats():
             "total_merged_prs": sum(len(c["merged_prs"]) for c in active),
             "tier_breakdown": tier_counts,
             "banned_users": len(banned),
-            "last_updated": datetime.utcnow().isoformat() + "Z"
+            "flagged_users": len(flagged),            "last_updated": datetime.utcnow().isoformat() + "Z"
         }
     })
