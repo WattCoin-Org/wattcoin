@@ -501,13 +501,14 @@ def verify_pr_merged(pr_number, issue_number, target_repo=None):
 def safety_scan_pr(pr_number, target_repo):
     """
     Fetch PR diff from target repo and run AI safety scan via Grok.
-    Returns: (passed: bool, report: str)
-    - passed=True: code is safe, proceed with payment
-    - passed=False: flagged, block payment
+    Returns: (passed: bool, report: str, scan_ran: bool)
+    - passed=True, scan_ran=True: code is safe, proceed
+    - passed=False, scan_ran=True: flagged, block payment
+    - passed=False, scan_ran=False: scan couldn't run, block payment (admin override needed)
     """
     if not GROK_API_KEY:
-        print("[SWARMSOLVE] GROK_API_KEY not set — skipping safety scan", flush=True)
-        return True, "Safety scan skipped (no API key configured)"
+        print("[SWARMSOLVE] GROK_API_KEY not set — BLOCKING (scan required)", flush=True)
+        return False, "Safety scan unavailable: GROK_API_KEY not configured. Admin override required.", False
 
     check_repo = target_repo or REPO
 
@@ -520,14 +521,14 @@ def safety_scan_pr(pr_number, target_repo):
         )
         if diff_resp.status_code != 200:
             print(f"[SWARMSOLVE] Failed to fetch diff: {diff_resp.status_code}", flush=True)
-            return True, f"Safety scan skipped (could not fetch diff: HTTP {diff_resp.status_code})"
+            return False, f"Safety scan unavailable: could not fetch PR diff (HTTP {diff_resp.status_code}). Try again or admin override.", False
 
         diff_text = diff_resp.text
         if len(diff_text) > 15000:
             diff_text = diff_text[:15000] + "\n... [TRUNCATED — diff too large] ..."
     except Exception as e:
         print(f"[SWARMSOLVE] Diff fetch error: {e}", flush=True)
-        return True, f"Safety scan skipped (diff fetch error: {e})"
+        return False, f"Safety scan unavailable: diff fetch error ({e}). Try again or admin override.", False
 
     # Safety scan prompt
     prompt = f"""You are a code security auditor for SwarmSolve, a paid software delivery platform.
@@ -578,7 +579,7 @@ Only PASS if the code is clearly benign."""
 
         if grok_resp.status_code != 200:
             print(f"[SWARMSOLVE] Grok API error: {grok_resp.status_code}", flush=True)
-            return True, f"Safety scan skipped (Grok API error: {grok_resp.status_code})"
+            return False, f"Safety scan unavailable: Grok API error (HTTP {grok_resp.status_code}). API key may be expired. Try again or admin override.", False
 
         report = grok_resp.json()["choices"][0]["message"]["content"]
         print(f"[SWARMSOLVE] Safety scan result:\n{report}", flush=True)
@@ -588,20 +589,20 @@ Only PASS if the code is clearly benign."""
         if verdict_line:
             verdict = verdict_line[0].split(":", 1)[1].strip().upper()
             if "FAIL" in verdict:
-                return False, report
+                return False, report, True
 
         # Also fail on CRITICAL/HIGH risk even if verdict parsing is weird
         risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
         if risk_line:
             risk = risk_line[0].split(":", 1)[1].strip().upper()
             if risk in ("CRITICAL", "HIGH"):
-                return False, report
+                return False, report, True
 
-        return True, report
+        return True, report, True
 
     except Exception as e:
         print(f"[SWARMSOLVE] Safety scan error: {e}", flush=True)
-        return True, f"Safety scan skipped (error: {e})"
+        return False, f"Safety scan unavailable: {e}. Try again or admin override.", False
 
 
 # =============================================================================
@@ -983,24 +984,43 @@ def approve_solution(solution_id):
 
         # Safety scan — fetch diff and run through AI audit
         target_repo = solution.get("target_repo", REPO)
-        scan_passed, scan_report = safety_scan_pr(pr_number, target_repo)
+
+        # Admin can skip scan if Grok is down
+        admin_key = (data.get("admin_key") or "").strip()
+        skip_scan = data.get("skip_scan", False)
+        expected_admin = os.getenv("ADMIN_API_KEY", "")
+        is_admin = bool(expected_admin and admin_key == expected_admin)
+
+        if skip_scan and is_admin:
+            scan_passed, scan_report, scan_ran = True, "Scan skipped by admin override", False
+            print(f"[SWARMSOLVE] Safety scan SKIPPED by admin override for {solution_id}", flush=True)
+        else:
+            scan_passed, scan_report, scan_ran = safety_scan_pr(pr_number, target_repo)
+
         if not scan_passed:
-            # Flag on Discord but don't pay
+            # Determine if it's a security flag or scan unavailable
+            status_code = 403 if scan_ran else 503
+            error_msg = "Safety scan failed — payment blocked" if scan_ran else "Safety scan unavailable — payment blocked"
+
             notify_discord(
-                "⚠️ Safety Scan FAILED — Payment Blocked",
-                f"**{solution['title']}**\n\nPR #{pr_number} by @{author} flagged by safety scan",
+                f"⚠️ {'Safety Scan FAILED' if scan_ran else 'Safety Scan UNAVAILABLE'} — Payment Blocked",
+                f"**{solution['title']}**\n\nPR #{pr_number} by @{author}" +
+                (f"\n\n**Reason:** {scan_report[:200]}" if not scan_ran else ""),
                 color=0xFF0000,
                 fields={
                     "Solution ID": solution_id,
                     "Target Repo": target_repo,
-                    "PR": f"#{pr_number}"
+                    "PR": f"#{pr_number}",
+                    "Type": "Security flag" if scan_ran else "Scan unavailable (Grok down?)"
                 }
             )
             return jsonify({
-                "error": "Safety scan failed — payment blocked",
+                "error": error_msg,
                 "scan_report": scan_report,
-                "hint": "The PR was flagged for potential security issues. Contact the team if you believe this is a false positive."
-            }), 403
+                "scan_ran": scan_ran,
+                "hint": "Admin can override with admin_key + skip_scan:true if scan is unavailable." if not scan_ran
+                        else "The PR was flagged for potential security issues. Contact the team if you believe this is a false positive."
+            }), status_code
 
         # Calculate payout
         budget = solution["budget_watt"]
