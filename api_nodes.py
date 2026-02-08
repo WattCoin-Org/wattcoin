@@ -12,6 +12,8 @@ import requests
 import base58
 from datetime import datetime, timezone
 from api_error_codes import E
+from extensions import limiter
+from config_rates import RateLimitConfig
 
 nodes_bp = Blueprint('nodes', __name__)
 
@@ -253,6 +255,7 @@ def get_active_nodes(capability: str = None) -> list:
 # === API Endpoints ===
 
 @nodes_bp.route('/api/v1/nodes/register', methods=['POST'])
+@limiter.limit(RateLimitConfig.REGISTER)
 def register_node():
     """Register a new WattNode"""
     body = request.get_json() or {}
