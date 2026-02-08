@@ -2431,6 +2431,73 @@ def process_payment_queue():
     })
 
 
+@admin_bp.route('/queue_manual_payment', methods=['POST'])
+@login_required
+def queue_manual_payment():
+    """Manually queue a payment for a merged PR that missed auto-payment.
+    Goes through the same pipeline as automated payments (on-chain memo, PR comment, Discord).
+    """
+    import json
+    import os
+    from datetime import datetime
+    
+    pr_number = request.form.get('pr_number', type=int)
+    wallet = request.form.get('wallet', '').strip()
+    amount = request.form.get('amount', type=int)
+    bounty_issue_id = request.form.get('bounty_issue_id', type=int)
+    reason = request.form.get('reason', 'Manual admin payment').strip()
+    
+    # Validation
+    errors = []
+    if not pr_number:
+        errors.append("PR number required")
+    if not wallet or len(wallet) < 32:
+        errors.append("Valid Solana wallet address required")
+    if not amount or amount < 1:
+        errors.append("Amount must be > 0 WATT")
+    if amount and amount > 100000:
+        errors.append("Amount exceeds 100K WATT safety limit — contact admin for larger payouts")
+    
+    if errors:
+        return redirect(url_for('admin.dashboard', error=" | ".join(errors)))
+    
+    queue_file = "/app/data/payment_queue.json"
+    os.makedirs("/app/data", exist_ok=True)
+    
+    # Load existing queue
+    queue = []
+    if os.path.exists(queue_file):
+        try:
+            with open(queue_file, 'r') as f:
+                queue = json.load(f)
+        except:
+            queue = []
+    
+    # Add manual payment entry
+    payment = {
+        "pr_number": pr_number,
+        "wallet": wallet,
+        "amount": amount,
+        "bounty_issue_id": bounty_issue_id,
+        "review_score": None,
+        "author": "manual_admin_payout",
+        "queued_at": datetime.utcnow().isoformat(),
+        "status": "pending",
+        "manual": True,
+        "reason": reason
+    }
+    
+    queue.append(payment)
+    
+    with open(queue_file, 'w') as f:
+        json.dump(queue, f, indent=2)
+    
+    print(f"[ADMIN] Manual payment queued: PR #{pr_number}, {amount:,} WATT to {wallet[:8]}... Reason: {reason}", flush=True)
+    
+    return redirect(url_for('admin.dashboard', 
+        message=f"✅ Queued: {amount:,} WATT for PR #{pr_number} → {wallet[:8]}... Use Process Queue to send."))
+
+
 def reject_submission(sub_id):
     """Reject a pending submission."""
     data = load_submissions()
