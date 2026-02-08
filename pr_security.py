@@ -311,6 +311,136 @@ def validate_pr_format(pr_body):
     return is_valid, errors
 
 # =============================================================================
+# AI SECURITY SCAN (Fail-Closed)
+# =============================================================================
+
+def ai_security_scan_pr(pr_number, repo=None):
+    """
+    Fetch PR diff and run AI security audit.
+    FAIL-CLOSED: If AI unavailable, scan errors, or any issue → blocks merge.
+    
+    Returns: (passed: bool, report: str, scan_ran: bool)
+    - passed=True,  scan_ran=True:  code is safe
+    - passed=False, scan_ran=True:  flagged as dangerous
+    - passed=False, scan_ran=False: scan couldn't run → block (fail-closed)
+    """
+    import requests as req
+    
+    check_repo = repo or os.getenv("GITHUB_REPO", "WattCoin-Org/wattcoin")
+    github_token = os.getenv("GITHUB_TOKEN", "")
+    
+    # Check AI is configured
+    try:
+        from ai_provider import call_ai, AI_API_KEY
+        if not AI_API_KEY:
+            print(f"[SECURITY] AI_API_KEY not set — BLOCKING PR #{pr_number} (fail-closed)", flush=True)
+            return False, "Security scan unavailable: AI service not configured.", False
+    except ImportError:
+        print(f"[SECURITY] ai_provider not available — BLOCKING PR #{pr_number} (fail-closed)", flush=True)
+        return False, "Security scan unavailable: AI provider module missing.", False
+    
+    # Fetch PR diff
+    try:
+        gh_headers = {"Accept": "application/vnd.github.v3.diff"}
+        if github_token:
+            gh_headers["Authorization"] = f"token {github_token}"
+        
+        diff_resp = req.get(
+            f"https://api.github.com/repos/{check_repo}/pulls/{pr_number}",
+            headers=gh_headers,
+            timeout=30
+        )
+        if diff_resp.status_code != 200:
+            print(f"[SECURITY] Failed to fetch diff for PR #{pr_number}: HTTP {diff_resp.status_code}", flush=True)
+            return False, f"Security scan unavailable: could not fetch PR diff (HTTP {diff_resp.status_code}).", False
+        
+        diff_text = diff_resp.text
+        if not diff_text.strip():
+            # Empty diff = no code changes, safe
+            return True, "No code changes detected.", True
+        
+        if len(diff_text) > 15000:
+            diff_text = diff_text[:15000] + "\n... [TRUNCATED — diff too large] ..."
+    except Exception as e:
+        print(f"[SECURITY] Diff fetch error PR #{pr_number}: {e}", flush=True)
+        return False, f"Security scan unavailable: diff fetch error ({e}).", False
+    
+    # AI security scan prompt
+    prompt = f"""You are a code security auditor for an open-source cryptocurrency project.
+Review this PR diff for SAFETY ISSUES ONLY. This is NOT a code quality review.
+
+SCAN FOR:
+1. Malware, backdoors, reverse shells, keyloggers
+2. Credential theft (harvesting API keys, wallet private keys, passwords)
+3. Phishing code (fake login pages, spoofed URLs)
+4. Cryptocurrency theft (unauthorized wallet operations, address swapping, draining funds)
+5. Data exfiltration (sending user data to external servers)
+6. Obfuscated/encoded malicious payloads (base64-encoded exploit code, eval() abuse)
+7. Dependency hijacking (typosquatted packages, suspicious npm/pip installs)
+8. Environment variable harvesting (reading secrets and sending them externally)
+9. Supply chain attacks (modifying build/deploy scripts to inject malicious code)
+
+PR #{pr_number} on {check_repo}
+
+DIFF:
+```
+{diff_text}
+```
+
+Respond in this EXACT format:
+
+VERDICT: PASS or FAIL
+RISK_LEVEL: NONE / LOW / MEDIUM / HIGH / CRITICAL
+FLAGS: (list any specific concerns, or "None")
+SUMMARY: (one sentence explanation)
+
+Be strict — if in doubt, FAIL. False positives are better than letting malicious code through.
+Only PASS if the code is clearly benign."""
+
+    try:
+        report, ai_error = call_ai(prompt, temperature=0.1, max_tokens=500, timeout=30)
+        
+        if ai_error:
+            print(f"[SECURITY] AI API error for PR #{pr_number}: {ai_error}", flush=True)
+            return False, f"Security scan unavailable: AI error ({ai_error}).", False
+        
+        print(f"[SECURITY] Scan result PR #{pr_number}:\n{report}", flush=True)
+        
+        # Parse verdict
+        verdict_line = [l for l in report.split("\n") if l.strip().startswith("VERDICT:")]
+        if verdict_line:
+            verdict = verdict_line[0].split(":", 1)[1].strip().upper()
+            if "FAIL" in verdict:
+                log_security_event("security_scan_failed", {
+                    "pr_number": pr_number,
+                    "report": report
+                })
+                return False, report, True
+        
+        # Also fail on CRITICAL/HIGH risk even if verdict parsing is off
+        risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
+        if risk_line:
+            risk = risk_line[0].split(":", 1)[1].strip().upper()
+            if risk in ("CRITICAL", "HIGH"):
+                log_security_event("security_scan_high_risk", {
+                    "pr_number": pr_number,
+                    "risk": risk,
+                    "report": report
+                })
+                return False, report, True
+        
+        log_security_event("security_scan_passed", {
+            "pr_number": pr_number,
+            "report": report[:200]
+        })
+        return True, report, True
+        
+    except Exception as e:
+        print(f"[SECURITY] Scan exception PR #{pr_number}: {e}", flush=True)
+        return False, f"Security scan unavailable: {e}.", False
+
+
+# =============================================================================
 # GITHUB WEBHOOK SIGNATURE VERIFICATION
 # =============================================================================
 
