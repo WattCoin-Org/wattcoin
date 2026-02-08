@@ -181,7 +181,11 @@ TIER_INFO = {
 @reputation_bp.route('/api/v1/reputation', methods=['GET'])
 def list_reputation():
     """List all contributors and their merit reputation."""
-    contributors = build_contributor_list()
+    all_contributors = build_contributor_list()
+    
+    # Separate banned users — show count only, not individual entries
+    banned = [c for c in all_contributors if c.get("tier") == "banned"]
+    contributors = [c for c in all_contributors if c.get("tier") != "banned"]
     
     total_watt = sum(c["total_watt_earned"] for c in contributors)
     total_merged = sum(len(c["merged_prs"]) for c in contributors)
@@ -190,10 +194,12 @@ def list_reputation():
         "success": True,
         "total": len(contributors),
         "contributors": contributors,
+        "banned_count": len(banned),
         "stats": {
             "total_contributors": len(contributors),
             "total_merged_prs": total_merged,
             "total_watt_distributed": total_watt,
+            "banned_users": len(banned),
             "last_updated": datetime.utcnow().isoformat() + "Z"
         },
         "tiers": TIER_INFO,
@@ -232,20 +238,24 @@ def get_contributor(github_username):
 @reputation_bp.route('/api/v1/reputation/stats', methods=['GET'])
 def get_stats():
     """Get overall merit system stats."""
-    contributors = build_contributor_list()
+    all_contributors = build_contributor_list()
+    
+    banned = [c for c in all_contributors if c.get("tier") == "banned"]
+    active = [c for c in all_contributors if c.get("tier") != "banned"]
     
     tier_counts = {}
-    for c in contributors:
+    for c in active:
         tier = c.get("tier", "new")
         tier_counts[tier] = tier_counts.get(tier, 0) + 1
     
     return jsonify({
         "success": True,
         "stats": {
-            "total_contributors": len(contributors),
-            "total_watt_distributed": sum(c["total_watt_earned"] for c in contributors),
-            "total_merged_prs": sum(len(c["merged_prs"]) for c in contributors),
+            "total_contributors": len(active),
+            "total_watt_distributed": sum(c["total_watt_earned"] for c in active),
+            "total_merged_prs": sum(len(c["merged_prs"]) for c in active),
             "tier_breakdown": tier_counts,
+            "banned_users": len(banned),
             "last_updated": datetime.utcnow().isoformat() + "Z"
         }
     })
