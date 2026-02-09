@@ -46,6 +46,9 @@ from flask_cors import CORS
 from anthropic import Anthropic
 from openai import OpenAI
 
+# Track startup time for health metrics
+START_TIME = time.time()
+
 from scraper_errors import (
     ScraperError,
     ScraperErrorCode,
@@ -1348,16 +1351,53 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
+    """
+    Enhanced health check with service-level status and network metrics.
+    Bounty #90 requirement.
+    """
+    from api_tasks import load_tasks
+    from api_nodes import load_nodes, is_node_active
+    
+    # 1. Service status checks
+    ai_api_ok = bool(os.getenv("AI_API_KEY"))
+    discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
+    
+    # 2. Database/File readability checks
+    data_files = [
+        os.getenv("NODES_FILE", "/app/data/nodes.json"),
+        os.path.join(os.getenv("DATA_DIR", "/app/data"), "tasks.json"),
+        "/app/data/api_keys.json",
+        "/app/data/pr_payouts.json"
+    ]
+    readable_files = 0
+    for f in data_files:
+        if os.path.exists(f) and os.access(f, os.R_OK):
+            readable_files += 1
+    db_ok = readable_files == len(data_files)
+    
+    # 3. Metrics
+    tasks_data = load_tasks()
+    open_tasks = sum(1 for t in tasks_data.get("tasks", {}).values() if t.get("status") == "open")
+    
+    nodes_data = load_nodes()
+    active_nodes = sum(1 for n in nodes_data.get("nodes", {}).values() if is_node_active(n))
+    
+    status = "healthy" if ai_api_ok and db_ok else "degraded"
+    http_code = 200 if status == "healthy" else 503
+    
     return jsonify({
-        'status': 'ok', 
-        'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        "status": status,
+        "version": "3.4.1",
+        "uptime_seconds": int(time.time() - START_TIME),
+        "services": {
+            "database": "ok" if db_ok else "error",
+            "discord": "ok" if discord_ok else "not_configured",
+            "ai_api": "ok" if ai_api_ok else "error"
+        },
+        "active_nodes": active_nodes,
+        "open_tasks": open_tasks,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }), http_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
