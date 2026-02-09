@@ -15,6 +15,38 @@
       "paid_at": "2026-02-06T07:07:30Z",
       "review_score": 8,
       "payment_method": "auto_queue"
+    },
+    {
+      "id": 2,
+      "pr_number": 105,
+      "author": "energypantry",
+      "wallet": "BHNyaPF96PzFzSeRgaNKPHoZf6wM341ZzGLPsrvGrkMx",
+      "amount": 5000,
+      "bounty_issue_id": 91,
+      "status": "paid",
+      "queued_at": "2026-02-09T07:00:00Z",
+      "approved_by": "auto",
+      "approved_at": "2026-02-09T07:05:00Z",
+      "tx_signature": "h44Nx5Y6H8zoKmJkrfPFhxua7SDmodDWX1p8hDW5WzwAfjydBVkhsZPPJGgfiQW6mFSbP5T9cmg2zBEXWSeEyqL",
+      "paid_at": "2026-02-09T07:05:00Z",
+      "review_score": 8,
+      "payment_method": "auto_queue"
+    },
+    {
+      "id": 3,
+      "pr_number": 106,
+      "author": "energypantry",
+      "wallet": "BHNyaPF96PzFzSeRgaNKPHoZf6wM341ZzGLPsrvGrkMx",
+      "amount": 3000,
+      "bounty_issue_id": 92,
+      "status": "paid",
+      "queued_at": "2026-02-09T08:00:00Z",
+      "approved_by": "auto",
+      "approved_at": "2026-02-09T08:10:00Z",
+      "tx_signature": "32mfDudZri7LPzmSKPe9W2PR7GN7s2PLVi9Ys9GAwPRPxx7oj15jrSbyRgkxPdNnTxDZwfxb2hECQtG2xMH9VqgD",
+      "paid_at": "2026-02-09T08:10:00Z",
+      "review_score": 8,
+      "payment_method": "auto_queue"
     }
   ]
 }
