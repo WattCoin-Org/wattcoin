@@ -96,8 +96,18 @@ from flask_limiter.util import get_remote_address
 # Configure limits via environment variables for flexibility
 # Default values match existing production capacity (1000/hr, 100/min)
 # These defaults ensure protection even if env vars are missing.
-LIMIT_DEFAULT_HOUR = os.getenv("LIMIT_DEFAULT_HOUR", "1000 per hour")
-LIMIT_DEFAULT_MIN = os.getenv("LIMIT_DEFAULT_MIN", "100 per minute")
+
+def validate_limit(limit_str: str, default: str) -> str:
+    """Validate rate limit format 'N per unit'. Fallback to default if invalid."""
+    if not limit_str or not isinstance(limit_str, str):
+        return default
+    # Simple regex for 'Number per [second|minute|hour|day]'
+    if re.match(r"^\d+ per (second|minute|hour|day)$", limit_str.strip().lower()):
+        return limit_str.strip().lower()
+    return default
+
+LIMIT_DEFAULT_HOUR = validate_limit(os.getenv("LIMIT_DEFAULT_HOUR"), "1000 per hour")
+LIMIT_DEFAULT_MIN = validate_limit(os.getenv("LIMIT_DEFAULT_MIN"), "100 per minute")
 
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
@@ -114,12 +124,11 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    response = jsonify({
+    return jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    })
-    return response, 429
+    }), 429
 
 logger.info(f"Flask-Limiter initialized. Default: {LIMIT_DEFAULT_MIN}")
 
@@ -152,15 +161,15 @@ app.register_blueprint(backup_bp)
 app.register_blueprint(internal_bp)
 
 # Apply configurable endpoint-specific rate limits to blueprints
-limiter.limit(os.getenv("LIMIT_LLM", "10 per minute"))(llm_bp)
-limiter.limit(os.getenv("LIMIT_BOUNTIES", "100 per minute"))(bounties_bp)
-limiter.limit(os.getenv("LIMIT_STATS", "100 per minute"))(reputation_bp)
-limiter.limit(os.getenv("LIMIT_WEBHOOKS", "50 per minute"))(webhooks_bp)
-limiter.limit(os.getenv("LIMIT_TASKS", "100 per minute"))(tasks_bp)
-limiter.limit(os.getenv("LIMIT_NODES", "100 per minute"))(nodes_bp)
-limiter.limit(os.getenv("LIMIT_PR_REVIEW", "100 per minute"))(pr_review_bp)
-limiter.limit(os.getenv("LIMIT_WSI", "200 per minute"))(wsi_bp)
-limiter.limit(os.getenv("LIMIT_SWARMSOLVE", "20 per minute"))(swarmsolve_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_LLM"), "10 per minute"))(llm_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_BOUNTIES"), "100 per minute"))(bounties_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_STATS"), "100 per minute"))(reputation_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_WEBHOOKS"), "50 per minute"))(webhooks_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_TASKS"), "100 per minute"))(tasks_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_NODES"), "100 per minute"))(nodes_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_PR_REVIEW"), "100 per minute"))(pr_review_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_WSI"), "200 per minute"))(wsi_bp)
+limiter.limit(validate_limit(os.getenv("LIMIT_SWARMSOLVE"), "20 per minute"))(swarmsolve_bp)
 
 logger.info("Configurable blueprint-specific rate limits applied")
 
