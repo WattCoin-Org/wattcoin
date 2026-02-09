@@ -56,7 +56,7 @@ def is_valid_solana_address(address: str) -> bool:
         decoded = base58.b58decode(address)
         # Solana addresses (public keys) are exactly 32 bytes
         return len(decoded) == 32
-    except Exception:
+    except Exception as _:
         return False
 
 class WattBot(commands.Bot):
