@@ -59,7 +59,9 @@ def test_429_includes_retry_after(client):
     assert "Retry-After" in resp.headers
     # Verify Retry-After is a valid number (dynamic from Flask-Limiter)
     retry_after = resp.headers.get("Retry-After")
-    assert retry_after.isdigit(), "Retry-After should be numeric"
+    assert retry_after.isdigit(), "Retry-After header should be numeric string"
     data = resp.get_json()
     assert data["error"] == "Rate limit exceeded"
-    assert "seconds" in data["retry_after"]
+    # retry_after in JSON is numeric (int) for programmatic parsing
+    assert isinstance(data["retry_after"], int), "retry_after in JSON should be numeric"
+    assert data["retry_after"] > 0, "retry_after should be positive"

@@ -111,13 +111,15 @@ limiter = Limiter(
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
     # Use Flask-Limiter's dynamic retry_after, fall back to 60 seconds
-    retry_seconds = str(e.retry_after) if hasattr(e, 'retry_after') else '60'
+    # Ensure consistent integer type for retry_after
+    retry_after_raw = getattr(e, 'retry_after', 60)
+    retry_seconds = int(retry_after_raw) if retry_after_raw else 60
     response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": f"{retry_seconds} seconds"
+        "retry_after": retry_seconds  # Numeric for programmatic parsing
     })
-    response.headers["Retry-After"] = retry_seconds
+    response.headers["Retry-After"] = str(retry_seconds)  # String per HTTP spec
     return response, 429
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
@@ -163,10 +165,21 @@ limiter.limit("20 per minute")(swarmsolve_bp)  # SwarmSolve - moderate (on-chain
 # Admin blueprint - no additional limit (inherits global defaults)
 
 # Apply PUBLIC_RATE_LIMIT to specific high-traffic public endpoints
-from api_nodes import get_network_stats
-from api_tasks import task_leaderboard
-limiter.limit(PUBLIC_RATE_LIMIT)(get_network_stats)  # /api/v1/stats
-limiter.limit(PUBLIC_RATE_LIMIT)(task_leaderboard)   # /api/v1/tasks/leaderboard
+try:
+    from api_nodes import get_network_stats
+    if callable(get_network_stats):
+        limiter.limit(PUBLIC_RATE_LIMIT)(get_network_stats)  # /api/v1/stats
+        logger.info("Rate limit applied to /api/v1/stats")
+except (ImportError, AttributeError) as e:
+    logger.warning(f"Could not apply rate limit to /api/v1/stats: {e}")
+
+try:
+    from api_tasks import task_leaderboard
+    if callable(task_leaderboard):
+        limiter.limit(PUBLIC_RATE_LIMIT)(task_leaderboard)  # /api/v1/tasks/leaderboard
+        logger.info("Rate limit applied to /api/v1/tasks/leaderboard")
+except (ImportError, AttributeError) as e:
+    logger.warning(f"Could not apply rate limit to /api/v1/tasks/leaderboard: {e}")
 
 logger.info("Blueprint-specific rate limits applied successfully")
 
