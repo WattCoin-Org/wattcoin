@@ -159,3 +159,4 @@ if __name__ == "__main__":
         logger.critical(f"Bot failed to start: {e}")
     finally:
         http.close()
+
