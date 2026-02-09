@@ -95,6 +95,7 @@ from flask_limiter.util import get_remote_address
 
 # Configure limits via environment variables for flexibility
 # Default values match existing production capacity (1000/hr, 100/min)
+# These defaults ensure protection even if env vars are missing.
 LIMIT_DEFAULT_HOUR = os.getenv("LIMIT_DEFAULT_HOUR", "1000 per hour")
 LIMIT_DEFAULT_MIN = os.getenv("LIMIT_DEFAULT_MIN", "100 per minute")
 
