@@ -24,8 +24,12 @@ def main():
 
     # User confirmation for dependency installation
     def confirm_install(pkg_name):
-        res = input(f"Package '{pkg_name}' missing. Install it? (y/n): ")
-        return res.lower() == 'y'
+        valid_responses = {"y": True, "n": False, "yes": True, "no": False}
+        while True:
+            res = input(f"Package '{pkg_name}' missing. Install it? (y/n): ").strip().lower()
+            if res in valid_responses:
+                return valid_responses[res]
+            print("Invalid input. Please enter 'y' or 'n'.")
 
     # Check dependencies
     try:
@@ -34,7 +38,11 @@ def main():
     except ImportError:
         if confirm_install("pyinstaller"):
             print("Installing PyInstaller...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True, shell=False)
+            except subprocess.CalledProcessError as e:
+                print(f"✗ Failed to install PyInstaller: {e}")
+                sys.exit(1)
         else:
             print("✗ PyInstaller is required to build.")
             sys.exit(1)
@@ -45,7 +53,11 @@ def main():
     except ImportError:
         if confirm_install("pillow"):
             print("Installing Pillow...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], check=True)
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], check=True, shell=False)
+            except subprocess.CalledProcessError as e:
+                print(f"✗ Failed to install Pillow: {e}")
+                sys.exit(1)
         else:
             print("✗ Pillow is required to build.")
             sys.exit(1)
