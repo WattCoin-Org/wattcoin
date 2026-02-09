@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import time
+import platform
 import requests
 import multiprocessing
 from datetime import datetime, timedelta
@@ -222,7 +223,7 @@ class WattNodeGUI:
         
         title_frame = tk.Frame(logo_frame, bg=BG_DARK)
         title_frame.pack(side=tk.LEFT)
-        tk.Label(title_frame, text="WattNode v2.0", font=("Segoe UI", 16, "bold"),
+        tk.Label(title_frame, text=f"WattNode v3.0 ({platform.system()})", font=("Segoe UI", 16, "bold"),
                 fg=TEXT_WHITE, bg=BG_DARK).pack(anchor=tk.W)
         tk.Label(title_frame, text="Earn WATT by running a light node",
                 font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_DARK).pack(anchor=tk.W)
@@ -1103,4 +1104,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# Ported to Linux by BuilderFred 🎩
