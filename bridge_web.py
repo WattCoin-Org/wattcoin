@@ -162,6 +162,12 @@ limiter.limit("200 per minute")(wsi_bp)  # WSI interface - higher limit for UI
 limiter.limit("20 per minute")(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
 # Admin blueprint - no additional limit (inherits global defaults)
 
+# Apply PUBLIC_RATE_LIMIT to specific high-traffic public endpoints
+from api_nodes import get_network_stats
+from api_tasks import task_leaderboard
+limiter.limit(PUBLIC_RATE_LIMIT)(get_network_stats)  # /api/v1/stats
+limiter.limit(PUBLIC_RATE_LIMIT)(task_leaderboard)   # /api/v1/tasks/leaderboard
+
 logger.info("Blueprint-specific rate limits applied successfully")
 
 # =============================================================================

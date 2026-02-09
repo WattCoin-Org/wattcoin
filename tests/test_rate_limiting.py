@@ -36,6 +36,20 @@ def test_rate_limit_headers_on_bounty_stats(client):
     assert "X-RateLimit-Remaining" in resp.headers
 
 
+def test_rate_limit_headers_on_stats(client):
+    """Network stats endpoint should include rate limit headers."""
+    resp = client.get("/api/v1/stats")
+    assert "X-RateLimit-Limit" in resp.headers
+    assert "X-RateLimit-Remaining" in resp.headers
+
+
+def test_rate_limit_headers_on_leaderboard(client):
+    """Task leaderboard endpoint should include rate limit headers."""
+    resp = client.get("/api/v1/tasks/leaderboard")
+    assert "X-RateLimit-Limit" in resp.headers
+    assert "X-RateLimit-Remaining" in resp.headers
+
+
 def test_429_includes_retry_after(client):
     """Exceeding rate limit returns 429 with Retry-After header."""
     # Exhaust the limit (set to 2/min in fixture)
