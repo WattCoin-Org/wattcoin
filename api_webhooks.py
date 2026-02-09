@@ -273,7 +273,12 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
     if event == "merge":
         if pr_number not in contributor["merged_prs"]:
             contributor["merged_prs"].append(pr_number)
-        contributor["total_watt_earned"] += watt_earned
+        # Idempotent WATT crediting — only credit once per PR
+        watt_credited = contributor.get("watt_credited_prs", [])
+        if watt_earned > 0 and pr_number not in watt_credited:
+            contributor["total_watt_earned"] += watt_earned
+            watt_credited.append(pr_number)
+            contributor["watt_credited_prs"] = watt_credited
     elif event == "reject":
         if pr_number not in contributor["rejected_prs"]:
             contributor["rejected_prs"].append(pr_number)
@@ -1995,6 +2000,20 @@ def process_payment_queue():
     import json
     from datetime import datetime, timedelta
     
+    # Reconcile: ensure all paid payouts have WATT credited in reputation (idempotent)
+    # Runs every startup regardless of queue state — catches any missed credits
+    try:
+        all_payouts = load_json_data(PR_PAYOUTS_FILE, default={"payouts": []})
+        paid_count = 0
+        for p in all_payouts.get("payouts", []):
+            if p.get("status") == "paid" and p.get("author") and p.get("amount"):
+                update_reputation(p["author"], "merge", p["pr_number"], watt_earned=p["amount"])
+                paid_count += 1
+        if paid_count > 0:
+            print(f"[QUEUE] Reputation reconciliation complete — {paid_count} payouts verified", flush=True)
+    except Exception as e:
+        print(f"[QUEUE] Reputation reconciliation failed: {e}", flush=True)
+    
     queue_file = "/app/data/payment_queue.json"
     
     if not os.path.exists(queue_file):
@@ -2077,6 +2096,10 @@ def process_payment_queue():
                 author=payment.get("author")
             )
             
+            # Credit WATT in reputation system (safety net — merge handler may have crashed before crediting)
+            if author:
+                update_reputation(author, "merge", pr_number, watt_earned=amount)
+            
             # Post success comment
             try:
                 solscan_url = f"https://solscan.io/tx/{existing_tx}"
@@ -2088,6 +2111,14 @@ def process_payment_queue():
                 )
             except Exception as e:
                 print(f"[QUEUE] Comment failed for PR #{pr_number}: {e}", flush=True)
+            
+            # Discord notification for recovered payment
+            notify_discord(
+                "✅ Payment Recovered",
+                f"PR #{pr_number} bounty paid (recovered after restart).",
+                color=0x00FF00,
+                fields={"Amount": f"{amount:,} WATT", "Wallet": f"{wallet[:8]}...{wallet[-8:]}", "TX": f"[Solscan](https://solscan.io/tx/{existing_tx})"}
+            )
             
             # Label the bounty issue as paid (for activity feed accuracy)
             if bounty_issue_id:
@@ -2122,6 +2153,10 @@ def process_payment_queue():
                     color=0x00FF00,
                     fields={"Amount": f"{amount:,} WATT", "Wallet": f"{wallet[:8]}...{wallet[-8:]}", "TX": f"[Solscan](https://solscan.io/tx/{tx_sig})"}
                 )
+                
+                # Credit WATT in reputation system (safety net — merge handler may have crashed before crediting)
+                if author:
+                    update_reputation(author, "merge", pr_number, watt_earned=amount)
                 
                 # Record in payout ledger for leaderboard
                 record_completed_payout(
@@ -2206,6 +2241,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 
