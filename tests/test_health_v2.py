@@ -13,6 +13,8 @@ def test_health_endpoint_format(client, monkeypatch):
     # 1. Check for legacy fields
     resp = client.get('/health')
     data = resp.get_json()
+    assert "status" in data
+    assert data["status"] == "ok" # Must always be ok
     assert "ai" in data
     assert "claude" in data
     assert "proxy" in data
@@ -20,13 +22,15 @@ def test_health_endpoint_format(client, monkeypatch):
     assert "version" in data
     assert data["version"] == "3.4.0"
 
-def test_health_metrics(client):
-    # 2. Check for metrics
-    resp = client.get('/health')
-    data = resp.get_json()
-    assert "active_nodes" in data
-    assert "open_tasks" in data
-    assert "uptime_seconds" in data
+def test_health_degraded_state(client, monkeypatch):
+    # 2. Test degraded state (mocking DATA_DIR to non-existent)
+    with monkeypatch.context() as m:
+        m.setenv("DATA_DIR", "/tmp/non_existent_dir_wattcoin")
+        resp = client.get('/health')
+        data = resp.get_json()
+        assert data["status"] == "ok" # Still ok
+        assert data["health_status"] == "degraded"
+        assert data["services"]["database"] == "error"
 
 def test_health_services_structure(client):
     # 3. Check services structure
