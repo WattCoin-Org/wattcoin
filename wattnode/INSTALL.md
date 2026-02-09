@@ -100,6 +100,8 @@ cp config.example.yaml config.yaml
 python3 wattnode_gui.py
 ```
 
+*Note: On Linux, ensure `python3-tk` is installed via your package manager.*
+
 ### Build Binary (Optional, Linux)
 
 ```bash
