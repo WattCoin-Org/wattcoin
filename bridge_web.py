@@ -65,6 +65,9 @@ from scraper_errors import (
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
 
+# Track server start time for health endpoint
+_server_start_time = time.time()
+
 # =============================================================================
 # LOGGING
 # =============================================================================
@@ -97,7 +100,7 @@ from flask_limiter.util import get_remote_address
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    default_limits=[os.getenv("RATE_LIMIT_DEFAULT", "60 per minute"), "1000 per hour"],
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -108,13 +111,16 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    retry_after = e.description if hasattr(e, "description") and isinstance(e.description, str) and "seconds" in e.description else "60 seconds"
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after
+    })
+    response.headers["Retry-After"] = retry_after.split()[0] if " " in retry_after else "60"
+    return response, 429
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info(f"Flask-Limiter initialized with default limits: {os.getenv('RATE_LIMIT_DEFAULT', '60 per minute')}, 1000/hour")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -772,6 +778,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit("60 per minute")
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1347,20 +1354,62 @@ def proxy_moltbook():
 
 
 @app.route('/health')
+@limiter.limit("120 per minute")
 def health():
+    """
+    Health check endpoint with service status.
+    Returns 200 if healthy, 503 if critical service degraded.
+    """
+    data_dir = os.getenv("DATA_DIR", "data")
+    critical_files = [
+        os.path.join(data_dir, 'reputation.json'),
+        os.path.join(data_dir, 'pr_reviews.json'),
+        os.path.join(data_dir, 'contributor_reputation.json')
+    ]
+    
+    services = {
+        "database": "ok",
+        "discord": "ok" if os.getenv("DISCORD_WEBHOOK_URL") else "missing",
+        "ai_api": "ok" if (AI_API_KEY and CLAUDE_API_KEY) else "missing"
+    }
+    
+    # Check data files
+    for f in critical_files:
+        if not os.path.isfile(f) or not os.access(f, os.R_OK):
+            services["database"] = "degraded"
+            break
+            
+    # Count open tasks (from pr_payouts if tasks.json missing)
+    open_tasks_count = 0
+    try:
+        tasks_file = os.path.join(data_dir, 'tasks.json')
+        if os.path.exists(tasks_file):
+            with open(tasks_file, 'r') as f:
+                tasks_data = json.load(f)
+                open_tasks_count = len([t for t in tasks_data.get('tasks', []) if t.get('status') == 'OPEN'])
+        else:
+            payout_data = load_bounty_data()
+            open_tasks_count = len([p for p in payout_data.get('payouts', []) if p.get('status') != 'paid'])
+    except Exception:
+        pass
+
     active_nodes = len(get_active_nodes())
+    
+    status_code = 200 if services["database"] == "ok" else 503
+    
     return jsonify({
-        'status': 'ok', 
+        'status': 'healthy' if status_code == 200 else 'degraded',
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': int(time.time() - _server_start_time),
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks_count,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit("60 per minute")
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1399,6 +1448,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit("60 per minute")
 def bounty_stats():
     """
     Public bounty statistics for website.
