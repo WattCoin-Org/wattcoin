@@ -35,8 +35,13 @@ http.mount("http://", adapter)
 
 def is_valid_solana_address(address: str) -> bool:
     """Validate Solana address using base58 decoding and regex."""
-    if not address or not (32 <= len(address) <= 44):
+    if not address or not isinstance(address, str):
         return False
+    # Sanitize: strip whitespace and limit length
+    address = address.strip()
+    if not (32 <= len(address) <= 44):
+        return False
+    # Only allow base58 characters
     if not re.match(r"^[1-9A-HJ-NP-Za-km-z]+$", address):
         return False
     try:
