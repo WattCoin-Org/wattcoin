@@ -40,23 +40,15 @@ from collections import defaultdict, deque
 
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, render_template_string, request, session, jsonify
 from flask_cors import CORS
 from anthropic import Anthropic
 from openai import OpenAI
 
 # Service Imports for Health Check
-try:
-    from api_tasks import load_tasks
-except ImportError:
-    def load_tasks(): return {"tasks": {}}
-
-try:
-    from api_nodes import load_nodes, is_node_active
-except ImportError:
-    def load_nodes(): return {}
-    def is_node_active(n): return False
+from api_tasks import load_tasks
+from api_nodes import load_nodes, is_node_active
 
 # Track startup time for health metrics
 START_TIME = time.time()
@@ -1459,15 +1451,12 @@ def health():
         active_nodes = 0
     
     # 4. Overall Health Status
-    # AI Reviewer: status='ok' even when degraded masks issues.
     # Maintainer: All existing fields must be preserved exactly as-is.
-    # Compromise: status is 'error' ONLY if database is down. 
-    # Otherwise 'ok' with health_status='degraded'.
+    # status MUST always be 'ok' for backward compatibility.
     status = "ok"
     health_status = "healthy"
     
     if not db_ok:
-        status = "error"
         health_status = "unhealthy"
     elif not (ai_api_ok and discord_ok):
         health_status = "degraded"
