@@ -94,7 +94,8 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 # Configure limits via environment variables for flexibility
-DEFAULT_RATE_LIMIT = os.getenv("DEFAULT_RATE_LIMIT", "60 per minute")
+DEFAULT_LIMIT_HOUR = os.getenv("DEFAULT_LIMIT_HOUR", "1000 per hour")
+DEFAULT_LIMIT_MIN = os.getenv("DEFAULT_LIMIT_MIN", "60 per minute")
 LLM_RATE_LIMIT = os.getenv("LLM_RATE_LIMIT", "10 per minute")
 STATS_RATE_LIMIT = os.getenv("STATS_RATE_LIMIT", "100 per minute")
 
@@ -102,7 +103,7 @@ STATS_RATE_LIMIT = os.getenv("STATS_RATE_LIMIT", "100 per minute")
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=[DEFAULT_RATE_LIMIT],  # Configurable global defaults
+    default_limits=[DEFAULT_LIMIT_HOUR, DEFAULT_LIMIT_MIN],  # Global defaults
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -151,7 +152,18 @@ app.register_blueprint(swarmsolve_bp)
 app.register_blueprint(backup_bp)
 app.register_blueprint(internal_bp)
 
-logger.info("Blueprints registered successfully")
+# Apply configurable endpoint-specific rate limits to blueprints
+limiter.limit(os.getenv("LIMIT_LLM", "10 per minute"))(llm_bp)
+limiter.limit(os.getenv("LIMIT_BOUNTIES", "100 per minute"))(bounties_bp)
+limiter.limit(os.getenv("LIMIT_REPUTATION", "100 per minute"))(reputation_bp)
+limiter.limit(os.getenv("LIMIT_WEBHOOKS", "50 per minute"))(webhooks_bp)
+limiter.limit(os.getenv("LIMIT_TASKS", "100 per minute"))(tasks_bp)
+limiter.limit(os.getenv("LIMIT_NODES", "100 per minute"))(nodes_bp)
+limiter.limit(os.getenv("LIMIT_PR_REVIEW", "100 per minute"))(pr_review_bp)
+limiter.limit(os.getenv("LIMIT_WSI", "200 per minute"))(wsi_bp)
+limiter.limit(os.getenv("LIMIT_SWARMSOLVE", "20 per minute"))(swarmsolve_bp)
+
+logger.info("Configurable blueprint-specific rate limits applied")
 
 # =============================================================================
 # API CLIENTS
@@ -769,7 +781,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
-@limiter.limit(DEFAULT_RATE_LIMIT)
+@limiter.limit(DEFAULT_LIMIT_MIN)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
