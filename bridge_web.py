@@ -93,6 +93,8 @@ CORS(app, origins=[
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+PUBLIC_RATE_LIMIT = os.getenv("RATE_LIMIT_PUBLIC", "60 per minute")
+
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
     app=app,
@@ -108,11 +110,13 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": "60 seconds"
+    })
+    response.headers["Retry-After"] = "60"
+    return response, 429
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
 
@@ -772,6 +776,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1347,6 +1352,7 @@ def proxy_moltbook():
 
 
 @app.route('/health')
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
@@ -1361,6 +1367,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1399,6 +1406,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def bounty_stats():
     """
     Public bounty statistics for website.
