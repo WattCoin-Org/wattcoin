@@ -38,7 +38,10 @@ http.mount("https://", adapter)
 http.mount("http://", adapter)
 
 def is_valid_solana_address(address: str) -> bool:
-    """Validate Solana address using base58 decoding and strict regex."""
+    """
+    Validate Solana address using base58 decoding and strict regex.
+    Ensures the address is exactly 32 bytes when decoded.
+    """
     if not address or not isinstance(address, str):
         return False
     # Sanitize: strip whitespace
