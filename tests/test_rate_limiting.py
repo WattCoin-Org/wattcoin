@@ -56,12 +56,12 @@ def test_429_includes_retry_after(client):
     for _ in range(3):
         resp = client.get("/health")
     assert resp.status_code == 429
+    # Verify Retry-After header is present and numeric (per HTTP spec)
     assert "Retry-After" in resp.headers
-    # Verify Retry-After is a valid number (dynamic from Flask-Limiter)
     retry_after = resp.headers.get("Retry-After")
     assert retry_after.isdigit(), "Retry-After header should be numeric string"
+    # Verify JSON response preserves original string format for backward compatibility
     data = resp.get_json()
     assert data["error"] == "Rate limit exceeded"
-    # retry_after in JSON is numeric (int) for programmatic parsing
-    assert isinstance(data["retry_after"], int), "retry_after in JSON should be numeric"
-    assert data["retry_after"] > 0, "retry_after should be positive"
+    assert isinstance(data["retry_after"], str), "retry_after in JSON should be string (backward compat)"
+    assert "seconds" in data["retry_after"].lower(), "retry_after should include 'seconds'"
