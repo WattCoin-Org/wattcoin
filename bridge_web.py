@@ -114,6 +114,7 @@ def validate_limit(limit_str: str, default: str) -> str:
         
         # 1. Lower Bound: Prevent DoS via extremely restrictive limits
         if val < 1:
+            logger.error(f"Invalid rate limit value '{val}' in '{limit_str}'. Falling back to '{default}'.")
             return default
             
         # 2. Upper Bound: Prevent disabling protection via extremely loose limits
@@ -129,6 +130,8 @@ def validate_limit(limit_str: str, default: str) -> str:
             return default
             
         return limit_str.strip().lower()
+    
+    logger.error(f"Invalid rate limit format '{limit_str}'. Expected 'N per unit'. Falling back to '{default}'.")
     return default
 
 LIMIT_DEFAULT_HOUR = validate_limit(os.getenv("LIMIT_DEFAULT_HOUR"), "1000 per hour")
