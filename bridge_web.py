@@ -93,11 +93,16 @@ CORS(app, origins=[
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+# Configure limits via environment variables for flexibility
+DEFAULT_RATE_LIMIT = os.getenv("DEFAULT_RATE_LIMIT", "60 per minute")
+LLM_RATE_LIMIT = os.getenv("LLM_RATE_LIMIT", "10 per minute")
+STATS_RATE_LIMIT = os.getenv("STATS_RATE_LIMIT", "100 per minute")
+
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    default_limits=[DEFAULT_RATE_LIMIT],  # Configurable global defaults
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -108,13 +113,15 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+    })
+    # Ensure Retry-After header is present (Flask-Limiter handles this but we can be explicit)
+    return response, 429
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info(f"Flask-Limiter initialized. Default: {DEFAULT_RATE_LIMIT}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -144,19 +151,7 @@ app.register_blueprint(swarmsolve_bp)
 app.register_blueprint(backup_bp)
 app.register_blueprint(internal_bp)
 
-# Apply endpoint-specific rate limits after blueprint registration
-limiter.limit("10 per minute")(llm_bp)  # LLM queries are expensive - strict limit
-limiter.limit("100 per minute")(bounties_bp)  # Stats/queries - moderate limit
-limiter.limit("100 per minute")(reputation_bp)  # Stats/queries - moderate limit
-limiter.limit("50 per minute")(webhooks_bp)  # Webhooks - moderate limit
-limiter.limit("100 per minute")(tasks_bp)  # Task queries - moderate limit
-limiter.limit("100 per minute")(nodes_bp)  # Node queries - moderate limit
-limiter.limit("100 per minute")(pr_review_bp)  # PR review queries - moderate limit
-limiter.limit("200 per minute")(wsi_bp)  # WSI interface - higher limit for UI
-limiter.limit("20 per minute")(swarmsolve_bp)  # SwarmSolve - moderate (on-chain verification is slow)
-# Admin blueprint - no additional limit (inherits global defaults)
-
-logger.info("Blueprint-specific rate limits applied successfully")
+logger.info("Blueprints registered successfully")
 
 # =============================================================================
 # API CLIENTS
@@ -668,6 +663,7 @@ def index():
     return render_template_string(HTML_TEMPLATE, history=history)
 
 @app.route('/query', methods=['POST'])
+@limiter.limit(LLM_RATE_LIMIT)
 def query():
     prompt = request.form.get('prompt', '')
     history = session.get('history', [])
@@ -687,6 +683,7 @@ def query():
             history=history, status={'type': 'error', 'message': f'AI error: {str(e)}'})
 
 @app.route('/send-to-claude', methods=['POST'])
+@limiter.limit(LLM_RATE_LIMIT)
 def send_to_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
@@ -772,6 +769,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(DEFAULT_RATE_LIMIT)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1148,6 +1146,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit(LLM_RATE_LIMIT)
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1361,6 +1360,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(STATS_RATE_LIMIT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1399,6 +1399,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(STATS_RATE_LIMIT)
 def bounty_stats():
     """
     Public bounty statistics for website.
