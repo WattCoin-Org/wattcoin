@@ -94,20 +94,19 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 # Configure limits via environment variables for flexibility
-DEFAULT_LIMIT_HOUR = os.getenv("DEFAULT_LIMIT_HOUR", "1000 per hour")
-DEFAULT_LIMIT_MIN = os.getenv("DEFAULT_LIMIT_MIN", "60 per minute")
-LLM_RATE_LIMIT = os.getenv("LLM_RATE_LIMIT", "10 per minute")
-STATS_RATE_LIMIT = os.getenv("STATS_RATE_LIMIT", "100 per minute")
+# Default values match existing production capacity (1000/hr, 100/min)
+LIMIT_DEFAULT_HOUR = os.getenv("LIMIT_DEFAULT_HOUR", "1000 per hour")
+LIMIT_DEFAULT_MIN = os.getenv("LIMIT_DEFAULT_MIN", "100 per minute")
 
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=[DEFAULT_LIMIT_HOUR, DEFAULT_LIMIT_MIN],  # Global defaults
-    storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
+    default_limits=[LIMIT_DEFAULT_HOUR, LIMIT_DEFAULT_MIN],
+    storage_uri=os.getenv("REDIS_URL", "memory://"),
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
-    headers_enabled=True,  # Add X-RateLimit-* headers to responses
+    headers_enabled=True,
 )
 
 # Custom rate limit error handler
@@ -119,10 +118,9 @@ def ratelimit_handler(e):
         "message": "Too many requests. Please slow down and try again later.",
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
     })
-    # Ensure Retry-After header is present (Flask-Limiter handles this but we can be explicit)
     return response, 429
 
-logger.info(f"Flask-Limiter initialized. Default: {DEFAULT_RATE_LIMIT}")
+logger.info(f"Flask-Limiter initialized. Default: {LIMIT_DEFAULT_MIN}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -155,7 +153,7 @@ app.register_blueprint(internal_bp)
 # Apply configurable endpoint-specific rate limits to blueprints
 limiter.limit(os.getenv("LIMIT_LLM", "10 per minute"))(llm_bp)
 limiter.limit(os.getenv("LIMIT_BOUNTIES", "100 per minute"))(bounties_bp)
-limiter.limit(os.getenv("LIMIT_REPUTATION", "100 per minute"))(reputation_bp)
+limiter.limit(os.getenv("LIMIT_STATS", "100 per minute"))(reputation_bp)
 limiter.limit(os.getenv("LIMIT_WEBHOOKS", "50 per minute"))(webhooks_bp)
 limiter.limit(os.getenv("LIMIT_TASKS", "100 per minute"))(tasks_bp)
 limiter.limit(os.getenv("LIMIT_NODES", "100 per minute"))(nodes_bp)
@@ -675,7 +673,6 @@ def index():
     return render_template_string(HTML_TEMPLATE, history=history)
 
 @app.route('/query', methods=['POST'])
-@limiter.limit(LLM_RATE_LIMIT)
 def query():
     prompt = request.form.get('prompt', '')
     history = session.get('history', [])
@@ -695,7 +692,6 @@ def query():
             history=history, status={'type': 'error', 'message': f'AI error: {str(e)}'})
 
 @app.route('/send-to-claude', methods=['POST'])
-@limiter.limit(LLM_RATE_LIMIT)
 def send_to_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
@@ -781,7 +777,6 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
-@limiter.limit(DEFAULT_LIMIT_MIN)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1158,7 +1153,6 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
-@limiter.limit(LLM_RATE_LIMIT)
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1372,7 +1366,6 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
-@limiter.limit(STATS_RATE_LIMIT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1411,7 +1404,6 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
-@limiter.limit(STATS_RATE_LIMIT)
 def bounty_stats():
     """
     Public bounty statistics for website.
