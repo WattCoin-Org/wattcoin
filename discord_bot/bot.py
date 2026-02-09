@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 import base58
 import logging
+import re
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +34,11 @@ http.mount("https://", adapter)
 http.mount("http://", adapter)
 
 def is_valid_solana_address(address: str) -> bool:
-    """Validate Solana address using base58 decoding."""
+    """Validate Solana address using base58 decoding and regex."""
+    if not address or not (32 <= len(address) <= 44):
+        return False
+    if not re.match(r"^[1-9A-HJ-NP-Za-km-z]+$", address):
+        return False
     try:
         decoded = base58.b58decode(address)
         return len(decoded) == 32
