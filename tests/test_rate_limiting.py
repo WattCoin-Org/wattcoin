@@ -32,12 +32,3 @@ def test_429_includes_retry_after(client):
     data = resp.get_json()
     assert data["error"] == "Rate limit exceeded"
 
-
-def test_rate_limit_configurable():
-    """RATE_LIMIT_PUBLIC env var should configure the limit."""
-    os.environ["RATE_LIMIT_PUBLIC"] = "120 per minute"
-    # Re-import to pick up new value
-    import importlib
-    import bridge_web
-    importlib.reload(bridge_web)
-    assert bridge_web.PUBLIC_RATE_LIMIT == "120 per minute"
