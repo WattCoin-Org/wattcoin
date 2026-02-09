@@ -99,16 +99,35 @@ from flask_limiter.util import get_remote_address
 # These defaults ensure protection even if env vars are missing.
 
 def validate_limit(limit_str: str, default: str) -> str:
-    """Validate rate limit format 'N per unit'. Fallback to default if invalid."""
+    """
+    Validate rate limit format 'N per unit'. Fallback to default if invalid.
+    Includes security bounds to prevent DoS (too low) or effectively disabling protection (too high).
+    """
     if not limit_str or not isinstance(limit_str, str):
         return default
+    
     # Simple regex for 'Number per [second|minute|hour|day]'
     match = re.match(r"^(\d+) per (second|minute|hour|day)$", limit_str.strip().lower())
     if match:
         val = int(match.group(1))
-        # Prevent DoS via extremely low limits (min 1 per unit)
+        unit = match.group(2)
+        
+        # 1. Lower Bound: Prevent DoS via extremely restrictive limits
         if val < 1:
             return default
+            
+        # 2. Upper Bound: Prevent disabling protection via extremely loose limits
+        # Max limits: 100/sec, 5000/min, 100000/hour, 1000000/day
+        max_bounds = {
+            "second": 100,
+            "minute": 5000,
+            "hour": 100000,
+            "day": 1000000
+        }
+        if val > max_bounds.get(unit, 1000):
+            logger.warning(f"Rate limit '{limit_str}' exceeds safety bound for {unit}. Using default '{default}'.")
+            return default
+            
         return limit_str.strip().lower()
     return default
 
