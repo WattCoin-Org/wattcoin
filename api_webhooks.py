@@ -446,6 +446,26 @@ def post_github_comment(issue_number, comment):
     except:
         return False
 
+def add_issue_label(issue_number, label):
+    """Add a label to a GitHub issue. Creates the label if it doesn't exist."""
+    import requests
+    
+    if not GITHUB_TOKEN or not issue_number:
+        return False
+    
+    try:
+        url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}/labels"
+        resp = requests.post(
+            url,
+            headers=github_headers(),
+            json={"labels": [label]},
+            timeout=15
+        )
+        return resp.status_code in [200, 201]
+    except Exception as e:
+        print(f"[LABEL] Failed to add '{label}' to issue #{issue_number}: {e}", flush=True)
+        return False
+
 # =============================================================================
 # AUTO-REVIEW & AUTO-MERGE
 # =============================================================================
@@ -1755,6 +1775,10 @@ def process_payment_queue():
             except Exception as e:
                 print(f"[QUEUE] Comment failed for PR #{pr_number}: {e}", flush=True)
             
+            # Label the bounty issue as paid (for activity feed accuracy)
+            if bounty_issue_id:
+                add_issue_label(bounty_issue_id, "paid")
+            
             continue
         
         # Not yet paid — execute payment
@@ -1792,6 +1816,10 @@ def process_payment_queue():
                     review_score=review_score,
                     author=payment.get("author")
                 )
+                
+                # Label the bounty issue as paid (for activity feed accuracy)
+                if bounty_issue_id:
+                    add_issue_label(bounty_issue_id, "paid")
                 
             elif tx_sig and error:
                 # TX sent but confirmation uncertain
