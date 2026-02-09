@@ -18,13 +18,17 @@ logger = logging.getLogger("wattbot")
 # Config with defaults
 TOKEN = os.getenv("DISCORD_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
+
+# Critical configurations - explicitly check for presence in non-dev environments
 WATT_MINT = os.getenv("WATT_MINT", "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump")
 SOLANA_RPC = os.getenv("SOLANA_RPC", "https://solana.publicnode.com")
 
+SOLANA_ADDRESS_REGEX = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
 # Retry configuration for network calls
 retry_strategy = Retry(
-    total=3,
-    backoff_factor=1,
+    total=5, # Increased retries
+    backoff_factor=1.5, # Slightly slower backoff
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["HEAD", "GET", "POST", "OPTIONS"]
 )
@@ -34,18 +38,20 @@ http.mount("https://", adapter)
 http.mount("http://", adapter)
 
 def is_valid_solana_address(address: str) -> bool:
-    """Validate Solana address using base58 decoding and regex."""
+    """Validate Solana address using base58 decoding and strict regex."""
     if not address or not isinstance(address, str):
         return False
-    # Sanitize: strip whitespace and limit length
+    # Sanitize: strip whitespace
     address = address.strip()
-    if not (32 <= len(address) <= 44):
+    
+    # 1. Strict regex check for base58 character set and typical length
+    if not SOLANA_ADDRESS_REGEX.match(address):
         return False
-    # Only allow base58 characters
-    if not re.match(r"^[1-9A-HJ-NP-Za-km-z]+$", address):
-        return False
+        
+    # 2. Base58 decoding check
     try:
         decoded = base58.b58decode(address)
+        # Solana addresses (public keys) are exactly 32 bytes
         return len(decoded) == 32
     except Exception:
         return False
