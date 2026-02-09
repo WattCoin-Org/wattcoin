@@ -29,6 +29,7 @@ CHANGELOG v1.2.0:
 """
 
 import os
+import re
 import json
 import time
 import random
@@ -102,7 +103,12 @@ def validate_limit(limit_str: str, default: str) -> str:
     if not limit_str or not isinstance(limit_str, str):
         return default
     # Simple regex for 'Number per [second|minute|hour|day]'
-    if re.match(r"^\d+ per (second|minute|hour|day)$", limit_str.strip().lower()):
+    match = re.match(r"^(\d+) per (second|minute|hour|day)$", limit_str.strip().lower())
+    if match:
+        val = int(match.group(1))
+        # Prevent DoS via extremely low limits (min 1 per unit)
+        if val < 1:
+            return default
         return limit_str.strip().lower()
     return default
 
@@ -130,7 +136,7 @@ def ratelimit_handler(e):
         "retry_after": e.description if hasattr(e, "description") else "60 seconds"
     }), 429
 
-logger.info(f"Flask-Limiter initialized. Default: {LIMIT_DEFAULT_MIN}")
+logger.info(f"Flask-Limiter initialized. Default: {LIMIT_DEFAULT_HOUR}, {LIMIT_DEFAULT_MIN}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
