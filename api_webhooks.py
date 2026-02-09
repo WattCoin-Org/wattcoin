@@ -239,8 +239,8 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
     Update contributor reputation after an event.
     Events: 'merge', 'reject', 'revert'
     """
-    # Skip system/org accounts
-    SYSTEM_ACCOUNTS = {"wattcoin-org"}
+    # Skip system/org/internal accounts
+    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         print(f"[REPUTATION] Skipping system account: {github_username}", flush=True)
         return {"github": github_username, "score": 0, "tier": "system"}
@@ -2241,6 +2241,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 

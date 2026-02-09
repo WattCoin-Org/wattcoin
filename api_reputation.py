@@ -87,8 +87,36 @@ HISTORICAL_DATA = {
                 "tx_signature": "3vWx..."
             }
         ]
+    },
+    "imonlyspace": {
+        "github": "imonlyspace",
+        "wallet": "AjMrFBWcUmsVAu1dt23EyrJvfJUY6tN56Dwpi4vy5TWZ",
+        "bounties_completed": 1,
+        "total_watt_earned": 10000,
+        "first_contribution": "2026-02-03",
+        "bounties": [
+            {
+                "pr_number": 26,
+                "title": "Add ClawHub integration metadata",
+                "amount": 10000,
+                "completed_at": "2026-02-03",
+                "tx_signature": "368T5Nyj9M7WakiYdDQPX1dEfcgeBvsZSy5XzC26GZEyk1PtnUenqjzztwVEXHx8gcgQAqh1BUMFVJSc9oYAWmDf"
+            }
+        ]
     }
 }
+
+# Display overrides — system/org accounts that should show with custom branding
+DISPLAY_OVERRIDES = {
+    "unknown": {
+        "display_name": "WattCoin Team",
+        "avatar_url": "https://github.com/WattCoin-Org.png",
+        "github_url": "https://github.com/WattCoin-Org"
+    }
+}
+
+# System/internal accounts excluded from leaderboard entirely
+EXCLUDED_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
 
 # =============================================================================
 # DATA LOADING
@@ -102,9 +130,6 @@ def build_contributor_list():
     rep_data = load_reputation_data()
     merit_contributors = rep_data.get("contributors", {})
     
-    # System/org accounts excluded from leaderboard
-    SYSTEM_ACCOUNTS = {"wattcoin-org"}
-    
     # Load banned users for tier override
     from api_webhooks import load_banned_users
     banned_users = load_banned_users()
@@ -113,12 +138,18 @@ def build_contributor_list():
     
     # Merit system contributors (primary)
     for username, data in merit_contributors.items():
-        if username.lower() in SYSTEM_ACCOUNTS:
+        if username.lower() in EXCLUDED_ACCOUNTS:
             continue
         
         tier = data.get("tier", "new")
         if username.lower() in banned_users:
             tier = "banned"
+        
+        # Skip zero-contribution entries (no score, no WATT, no PRs, no historical data)
+        has_merit = data.get("score", 0) != 0 or data.get("total_watt_earned", 0) > 0 or len(data.get("merged_prs", [])) > 0
+        has_historical = username in HISTORICAL_DATA
+        if not has_merit and not has_historical:
+            continue
         
         entry = {
             "github": username,
@@ -131,6 +162,11 @@ def build_contributor_list():
             "last_updated": data.get("last_updated"),
             "source": "merit_system"
         }
+        
+        # Apply display overrides (e.g., "unknown" → "WattCoin Team")
+        if username in DISPLAY_OVERRIDES:
+            for key, val in DISPLAY_OVERRIDES[username].items():
+                entry[key] = val
         
         # Reference historical data separately (don't add to total_watt_earned — score is merit-only)
         if username in HISTORICAL_DATA:
