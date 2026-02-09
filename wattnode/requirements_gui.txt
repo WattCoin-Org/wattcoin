@@ -8,6 +8,9 @@ pillow>=10.0.0
 # For earnings graph visualization
 matplotlib>=3.7.0
 
+# Build dependencies (Linux)
+pyinstaller>=6.0.0
+
 # Optional: System tray support
 # pystray>=0.19.4
 # Pillow already installed above

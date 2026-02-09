@@ -66,11 +66,14 @@ View logs:
 journalctl -u wattnode -f
 ```
 
-## Desktop (Linux GUI)
+## Desktop (Linux/macOS GUI)
 
 ### Prerequisites
 
 ```bash
+# macOS
+brew install python@3.11
+
 # Ubuntu/Debian
 sudo apt update
 sudo apt install python3 python3-pip python3-venv python3-tk -y
@@ -97,7 +100,7 @@ cp config.example.yaml config.yaml
 python3 wattnode_gui.py
 ```
 
-### Build Binary (Optional)
+### Build Binary (Optional, Linux)
 
 ```bash
 python3 build_linux.py

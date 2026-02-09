@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build WattNode Linux Executable (AppImage)
+Build WattNode Linux Executable
 Requires: pip install pyinstaller pillow
 
 Run: python build_linux.py
@@ -10,32 +10,61 @@ Output: dist/WattNode
 import os
 import subprocess
 import sys
+import shutil
 
 def main():
     print("=" * 50)
     print("WattNode Linux Build")
     print("=" * 50)
     
+    # Check for Linux
+    if not sys.platform.startswith('linux'):
+        print("✗ This script is for Linux builds only.")
+        sys.exit(1)
+
+    # User confirmation for dependency installation
+    def confirm_install(pkg_name):
+        res = input(f"Package '{pkg_name}' missing. Install it? (y/n): ")
+        return res.lower() == 'y'
+
     # Check dependencies
     try:
         import PyInstaller
         print("✓ PyInstaller found")
     except ImportError:
-        print("Installing PyInstaller...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"])
+        if confirm_install("pyinstaller"):
+            print("Installing PyInstaller...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+        else:
+            print("✗ PyInstaller is required to build.")
+            sys.exit(1)
     
     try:
         from PIL import Image
         print("✓ Pillow found")
     except ImportError:
-        print("Installing Pillow...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "pillow"])
+        if confirm_install("pillow"):
+            print("Installing Pillow...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], check=True)
+        else:
+            print("✗ Pillow is required to build.")
+            sys.exit(1)
     
     # Create assets folder
     os.makedirs("assets", exist_ok=True)
     
-    # Ensure logo exists or create placeholder if needed
-    # (Assuming logo.png is present in assets/)
+    # Check for logo.png and prepare assets
+    if not os.path.exists("assets/logo.png"):
+        print("⚠️ Warning: assets/logo.png not found. Using generic icon.")
+        # Create a placeholder if needed
+    else:
+        print("✓ assets/logo.png verified")
+    
+    # Clean previous builds
+    if os.path.exists("build"):
+        shutil.rmtree("build")
+    if os.path.exists("dist"):
+        shutil.rmtree("dist")
     
     # PyInstaller command
     cmd = [
@@ -43,23 +72,15 @@ def main():
         "--onefile",
         "--name=WattNode",
         "--add-data=assets:assets",  # Include assets folder (colon on Linux)
+        "wattnode_gui.py"
     ]
-    
-    # Add icon if exists (.png preferred on Linux)
-    if os.path.exists("assets/logo.png"):
-        # PyInstaller doesn't use --icon for Linux binaries in the same way,
-        # but we include it in assets for the desktop entry.
-        pass
-    
-    cmd.append("wattnode_gui.py")
     
     print("\nRunning PyInstaller...")
     print(" ".join(cmd))
     print()
     
-    result = subprocess.run(cmd)
-    
-    if result.returncode == 0:
+    try:
+        result = subprocess.run(cmd, check=True)
         print("\n" + "=" * 50)
         print("✓ Build successful!")
         print("=" * 50)
@@ -67,7 +88,7 @@ def main():
         print("\nNext steps:")
         print("1. Test: ./dist/WattNode")
         print("2. Packaging: Run appimagetool to create an AppImage")
-    else:
+    except subprocess.CalledProcessError:
         print("\n✗ Build failed")
         sys.exit(1)
 
