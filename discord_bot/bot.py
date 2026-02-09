@@ -3,6 +3,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime
 import json
 import base58
@@ -17,6 +19,18 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
 WATT_MINT = os.getenv("WATT_MINT", "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump")
 SOLANA_RPC = os.getenv("SOLANA_RPC", "https://solana.publicnode.com")
+
+# Retry configuration for network calls
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "POST", "OPTIONS"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+http = requests.Session()
+http.mount("https://", adapter)
+http.mount("http://", adapter)
 
 def is_valid_solana_address(address: str) -> bool:
     """Validate Solana address using base58 decoding."""
@@ -64,7 +78,7 @@ async def balance(interaction: discord.Interaction, wallet: str):
                 {"encoding": "jsonParsed"}
             ]
         }
-        resp = requests.post(SOLANA_RPC, json=payload, timeout=10)
+        resp = http.post(SOLANA_RPC, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         
@@ -99,7 +113,7 @@ async def balance(interaction: discord.Interaction, wallet: str):
 async def bounties(interaction: discord.Interaction):
     await interaction.response.defer()
     try:
-        resp = requests.get(f"{API_BASE_URL}/api/v1/bounties?status=open", timeout=10)
+        resp = http.get(f"{API_BASE_URL}/api/v1/bounties?status=open", timeout=10)
         resp.raise_for_status()
         data = resp.json()
         items = data.get("items", [])[:10] # Top 10
@@ -134,7 +148,7 @@ async def bounties(interaction: discord.Interaction):
 async def stats(interaction: discord.Interaction):
     await interaction.response.defer()
     try:
-        resp = requests.get(f"{API_BASE_URL}/api/v1/stats", timeout=10)
+        resp = http.get(f"{API_BASE_URL}/api/v1/stats", timeout=10)
         resp.raise_for_status()
         data = resp.json()
         
