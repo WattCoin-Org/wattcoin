@@ -236,3 +236,4 @@ if __name__ == "__main__":
         logger.critical("Failed to log in: Invalid DISCORD_TOKEN provided.")
     except Exception as e:
         logger.critical(f"Bot failed to start: {e}")
+ 
