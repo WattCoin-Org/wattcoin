@@ -223,6 +223,16 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 if __name__ == "__main__":
     if not TOKEN:
-        logger.error("DISCORD_TOKEN environment variable is missing")
-    else:
+        logger.critical("DISCORD_TOKEN environment variable is missing. Bot cannot start.")
+        exit(1)
+    
+    # Pre-flight check: validate RPC and Mint
+    if not SOLANA_RPC.startswith("http"):
+        logger.warning(f"Invalid SOLANA_RPC: {SOLANA_RPC}. RPC calls may fail.")
+    
+    try:
         bot.run(TOKEN)
+    except discord.LoginFailure:
+        logger.critical("Failed to log in: Invalid DISCORD_TOKEN provided.")
+    except Exception as e:
+        logger.critical(f"Bot failed to start: {e}")
