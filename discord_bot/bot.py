@@ -15,27 +15,26 @@ import re
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wattbot")
 
-# Config with defaults
+# Config with mandatory checks
 TOKEN = os.getenv("DISCORD_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
 
-# Critical configurations - explicitly check for presence in non-dev environments
-WATT_MINT = os.getenv("WATT_MINT", "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump")
-SOLANA_RPC = os.getenv("SOLANA_RPC", "https://solana.publicnode.com")
+# Critical configurations - move to environment only, no sensitive defaults
+WATT_MINT = os.getenv("WATT_MINT")
+SOLANA_RPC = os.getenv("SOLANA_RPC")
 
 SOLANA_ADDRESS_REGEX = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
-# Retry configuration for network calls
+# Session management for resource cleanup
+http = requests.Session()
 retry_strategy = Retry(
-    total=5, # Increased retries
-    backoff_factor=1.5, # Slightly slower backoff
+    total=5,
+    backoff_factor=1.5,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["HEAD", "GET", "POST", "OPTIONS"]
 )
-adapter = HTTPAdapter(max_retries=retry_strategy)
-http = requests.Session()
-http.mount("https://", adapter)
-http.mount("http://", adapter)
+http.mount("https://", HTTPAdapter(max_retries=retry_strategy))
+http.mount("http://", HTTPAdapter(max_retries=retry_strategy))
 
 def is_valid_solana_address(address: str) -> bool:
     """
@@ -226,9 +225,17 @@ if __name__ == "__main__":
         logger.critical("DISCORD_TOKEN environment variable is missing. Bot cannot start.")
         exit(1)
     
-    # Pre-flight check: validate RPC and Mint
+    if not WATT_MINT:
+        logger.critical("WATT_MINT environment variable is missing.")
+        exit(1)
+        
+    if not SOLANA_RPC:
+        logger.critical("SOLANA_RPC environment variable is missing.")
+        exit(1)
+    
+    # Pre-flight check: validate RPC protocol
     if not SOLANA_RPC.startswith("http"):
-        logger.warning(f"Invalid SOLANA_RPC: {SOLANA_RPC}. RPC calls may fail.")
+        logger.warning(f"Invalid SOLANA_RPC protocol: {SOLANA_RPC}")
     
     try:
         bot.run(TOKEN)
@@ -236,4 +243,6 @@ if __name__ == "__main__":
         logger.critical("Failed to log in: Invalid DISCORD_TOKEN provided.")
     except Exception as e:
         logger.critical(f"Bot failed to start: {e}")
+    finally:
+        http.close()
  
