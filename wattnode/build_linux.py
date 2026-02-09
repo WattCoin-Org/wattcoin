@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
 Build WattNode Linux Executable
-Requires: pip install pyinstaller pillow
-
-Run: python build_linux.py
 Output: dist/WattNode
 """
 
@@ -12,98 +9,92 @@ import subprocess
 import sys
 import shutil
 
+# Constants for security and clarity
+REQUIRED_PACKAGES = {
+    "PyInstaller": "pyinstaller",
+    "PIL": "pillow"
+}
+
+def check_dependencies():
+    """Verify that all required build dependencies are installed."""
+    missing = []
+    
+    # Check PyInstaller
+    try:
+        import PyInstaller
+    except ImportError:
+        missing.append(REQUIRED_PACKAGES["PyInstaller"])
+        
+    # Check Pillow (PIL)
+    try:
+        from PIL import Image
+    except ImportError:
+        missing.append(REQUIRED_PACKAGES["PIL"])
+        
+    if missing:
+        print("✗ Missing build dependencies: " + ", ".join(missing))
+        print(f"\nPlease install them using:\n\npip install {' '.join(missing)}")
+        print("\nOr use the requirements file:\n\npip install -r requirements_gui.txt")
+        sys.exit(1)
+    
+    print("✓ All build dependencies found.")
+
 def main():
     print("=" * 50)
     print("WattNode Linux Build")
     print("=" * 50)
     
-    # Check for Linux
+    # 1. Platform Check
     if not sys.platform.startswith('linux'):
         print("✗ This script is for Linux builds only.")
         sys.exit(1)
 
-    # User confirmation for dependency installation
-    def confirm_install(pkg_name):
-        valid_responses = {"y": True, "n": False, "yes": True, "no": False}
-        while True:
-            res = input(f"Package '{pkg_name}' missing. Install it? (y/n): ").strip().lower()
-            if res in valid_responses:
-                return valid_responses[res]
-            print("Invalid input. Please enter 'y' or 'n'.")
-
-    # Check dependencies
-    try:
-        import PyInstaller
-        print("✓ PyInstaller found")
-    except ImportError:
-        if confirm_install("pyinstaller"):
-            print("Installing PyInstaller...")
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True, shell=False)
-            except subprocess.CalledProcessError as e:
-                print(f"✗ Failed to install PyInstaller: {e}")
-                sys.exit(1)
-        else:
-            print("✗ PyInstaller is required to build.")
-            sys.exit(1)
+    # 2. Dependency Check (Static, no auto-install for security)
+    check_dependencies()
     
-    try:
-        from PIL import Image
-        print("✓ Pillow found")
-    except ImportError:
-        if confirm_install("pillow"):
-            print("Installing Pillow...")
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], check=True, shell=False)
-            except subprocess.CalledProcessError as e:
-                print(f"✗ Failed to install Pillow: {e}")
-                sys.exit(1)
-        else:
-            print("✗ Pillow is required to build.")
-            sys.exit(1)
+    # 3. Environment Preparation
+    # Ensure we are in the correct directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
     
-    # Create assets folder
+    # Create assets folder if missing (should be tracked in git)
     os.makedirs("assets", exist_ok=True)
-    
-    # Check for logo.png and prepare assets
     if not os.path.exists("assets/logo.png"):
-        print("⚠️ Warning: assets/logo.png not found. Using generic icon.")
-        # Create a placeholder if needed
-    else:
-        print("✓ assets/logo.png verified")
+        print("⚠️ Warning: assets/logo.png not found. The application might lack an icon.")
     
     # Clean previous builds
-    if os.path.exists("build"):
-        shutil.rmtree("build")
-    if os.path.exists("dist"):
-        shutil.rmtree("dist")
+    for folder in ["build", "dist"]:
+        if os.path.exists(folder):
+            try:
+                shutil.rmtree(folder)
+            except Exception as e:
+                print(f"⚠️ Could not clean {folder}: {e}")
     
-    # PyInstaller command
+    # 4. PyInstaller Execution
+    # We use a list of arguments and shell=False to prevent command injection
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--name=WattNode",
-        "--add-data=assets:assets",  # Include assets folder (colon on Linux)
+        "--add-data=assets:assets",
         "wattnode_gui.py"
     ]
     
     print("\nRunning PyInstaller...")
-    print(" ".join(cmd))
-    print()
-    
     try:
-        result = subprocess.run(cmd, check=True)
+        # shell=False is the default, but we're explicit for security reviews
+        subprocess.run(cmd, check=True, shell=False)
+        
         print("\n" + "=" * 50)
         print("✓ Build successful!")
         print("=" * 50)
         print("\nOutput: dist/WattNode")
-        print("\nNext steps:")
-        print("1. Test: ./dist/WattNode")
-        print("2. Packaging: Run appimagetool to create an AppImage")
-    except subprocess.CalledProcessError:
-        print("\n✗ Build failed")
+    except subprocess.CalledProcessError as e:
+        print(f"\n✗ Build failed with exit code {e.returncode}")
         sys.exit(1)
-
+    except FileNotFoundError:
+        print("\n✗ PyInstaller not found in path. Please ensure it is installed.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

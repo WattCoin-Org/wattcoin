@@ -32,15 +32,19 @@ class TestLinuxPort(unittest.TestCase):
         result = subprocess.run([sys.executable, "-m", "py_compile", "wattnode/wattnode_gui.py"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, f"GUI script has syntax/import errors: {result.stderr}")
 
-    def test_build_script_confirm_install_logic(self):
-        """Verify the input validation in build_linux.py."""
-        # This is a bit tricky to test directly as it uses input(), 
-        # but we can verify the function existence and logic pattern.
+    def test_build_script_security_patterns(self):
+        """Verify the security hardening in build_linux.py."""
         with open("wattnode/build_linux.py", "r") as f:
             content = f.read()
-            self.assertIn("valid_responses = {\"y\": True, \"n\": False, \"yes\": True, \"no\": False}", content)
-            self.assertIn("while True:", content)
-            self.assertIn("shell=False", content)
+            # Verify no shell=True is used
+            self.assertNotIn("shell=True", content)
+            # Verify explicit shell=False is used in subprocess
+            self.assertIn("subprocess.run(cmd, check=True, shell=False)", content)
+            # Verify we are using list arguments
+            self.assertIn("cmd = [", content)
+            # Verify we moved away from interactive pip installs for security
+            self.assertNotIn("pip install", content.split("\n\n")[0]) # Not in logic, only in help text
+            self.assertIn("check_dependencies()", content)
 
 if __name__ == "__main__":
     unittest.main()
