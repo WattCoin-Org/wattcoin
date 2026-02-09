@@ -1,6 +1,10 @@
 from solana.rpc.async_api import AsyncClient
+from solana.rpc.types import TokenAccountOpts
 from solders.pubkey import Pubkey
+import logging
 from config import SOLANA_RPC_URL, WATT_MINT_ADDRESS
+
+logger = logging.getLogger('wattcoin-bot')
 
 class SolanaClient:
     def __init__(self):
@@ -11,7 +15,7 @@ class SolanaClient:
         async with AsyncClient(self.rpc_url) as client:
             try:
                 owner_pubkey = Pubkey.from_string(wallet_address)
-                opts = {"mint": self.mint_address}
+                opts = TokenAccountOpts(mint=self.mint_address)
                 
                 # Get token accounts by owner
                 response = await client.get_token_accounts_by_owner(owner_pubkey, opts)
@@ -27,5 +31,5 @@ class SolanaClient:
                 
                 return total_balance
             except Exception as e:
-                print(f"Error fetching Solana balance: {e}")
+                logger.error(f"Error fetching Solana balance for {wallet_address}: {e}")
                 return None
