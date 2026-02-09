@@ -1360,7 +1360,7 @@ def health():
     Fulfills bounty #90 while maintaining backward compatibility.
     """
     # 1. Service status checks
-    ai_api_ok = bool(os.getenv("AI_API_KEY"))
+    ai_api_ok = bool(ai_client)
     discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
     
     # 2. Database/File readability checks (relative paths via DATA_DIR)
@@ -1385,12 +1385,11 @@ def health():
     active_nodes = sum(1 for n in nodes_data.get("nodes", {}).values() if is_node_active(n))
     
     # Backward compatible status
-    # Note: Keep HTTP 200 even if degraded to prevent breaking CD pipelines
     status_val = "ok" if ai_api_ok and db_ok else "degraded"
     
     return jsonify({
         "status": status_val,
-        "version": "3.4.3",
+        "version": "3.4.0",
         "uptime_seconds": int(time.time() - START_TIME),
         "services": {
             "database": "ok" if db_ok else "error",
@@ -1402,7 +1401,7 @@ def health():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         # Legacy fields for backward compatibility
         "ai": ai_api_ok,
-        "claude": bool(os.getenv("CLAUDE_API_KEY")),
+        "claude": bool(claude_client),
         "proxy": True,
         "admin": True
     }), 200
