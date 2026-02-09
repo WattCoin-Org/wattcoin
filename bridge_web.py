@@ -110,12 +110,14 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
+    # Use Flask-Limiter's dynamic retry_after, fall back to 60 seconds
+    retry_seconds = str(e.retry_after) if hasattr(e, 'retry_after') else '60'
     response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": "60 seconds"
+        "retry_after": f"{retry_seconds} seconds"
     })
-    response.headers["Retry-After"] = "60"
+    response.headers["Retry-After"] = retry_seconds
     return response, 429
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")

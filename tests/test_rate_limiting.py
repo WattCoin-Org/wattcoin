@@ -22,6 +22,20 @@ def test_rate_limit_headers_present(client):
     assert "X-RateLimit-Reset" in resp.headers
 
 
+def test_rate_limit_headers_on_pricing(client):
+    """Pricing endpoint should include rate limit headers."""
+    resp = client.get("/api/v1/pricing")
+    assert "X-RateLimit-Limit" in resp.headers
+    assert "X-RateLimit-Remaining" in resp.headers
+
+
+def test_rate_limit_headers_on_bounty_stats(client):
+    """Bounty stats endpoint should include rate limit headers."""
+    resp = client.get("/api/v1/bounty-stats")
+    assert "X-RateLimit-Limit" in resp.headers
+    assert "X-RateLimit-Remaining" in resp.headers
+
+
 def test_429_includes_retry_after(client):
     """Exceeding rate limit returns 429 with Retry-After header."""
     # Exhaust the limit (set to 2/min in fixture)
@@ -29,6 +43,9 @@ def test_429_includes_retry_after(client):
         resp = client.get("/health")
     assert resp.status_code == 429
     assert "Retry-After" in resp.headers
+    # Verify Retry-After is a valid number (dynamic from Flask-Limiter)
+    retry_after = resp.headers.get("Retry-After")
+    assert retry_after.isdigit(), "Retry-After should be numeric"
     data = resp.get_json()
     assert data["error"] == "Rate limit exceeded"
-
+    assert "seconds" in data["retry_after"]
