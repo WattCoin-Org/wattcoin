@@ -1,0 +1,12 @@
+# WattNode Linux Requirements
+# Install with: pip install -r requirements_linux.txt
+
+# Core dependencies
+requests>=2.31.0
+pillow>=10.0.0
+
+# For earnings graph visualization
+matplotlib>=3.7.0
+
+# Build dependencies
+pyinstaller>=6.0.0

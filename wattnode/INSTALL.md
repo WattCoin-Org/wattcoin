@@ -66,16 +66,14 @@ View logs:
 journalctl -u wattnode -f
 ```
 
-## Desktop (macOS/Linux)
+## Desktop (Linux GUI)
 
 ### Prerequisites
 
 ```bash
-# macOS
-brew install python@3.11
-
 # Ubuntu/Debian
-sudo apt install python3 python3-pip python3-venv
+sudo apt update
+sudo apt install python3 python3-pip python3-venv python3-tk -y
 ```
 
 ### Installation
@@ -86,23 +84,24 @@ cd wattcoin/wattnode
 
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements_gui.txt
 
+# Configure
 cp config.example.yaml config.yaml
 # Edit config.yaml
 ```
 
-### Run
+### Run GUI
 
 ```bash
-# Activate venv
-source venv/bin/activate
+python3 wattnode_gui.py
+```
 
-# Register (one time)
-python wattnode.py register <stake_tx>
+### Build Binary (Optional)
 
-# Run daemon
-python wattnode.py run
+```bash
+python3 build_linux.py
+# Output: dist/WattNode
 ```
 
 ## Windows
