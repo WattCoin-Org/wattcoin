@@ -46,6 +46,10 @@ from flask_cors import CORS
 from anthropic import Anthropic
 from openai import OpenAI
 
+# Service Imports for Health Check
+from api_tasks import load_tasks
+from api_nodes import load_nodes, is_node_active
+
 # Track startup time for health metrics
 START_TIME = time.time()
 
@@ -1355,9 +1359,6 @@ def health():
     Enhanced health check with service-level status and network metrics.
     Fulfills bounty #90 while maintaining backward compatibility.
     """
-    from api_tasks import load_tasks
-    from api_nodes import load_nodes, is_node_active
-    
     # 1. Service status checks
     ai_api_ok = bool(os.getenv("AI_API_KEY"))
     discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
@@ -1384,12 +1385,12 @@ def health():
     active_nodes = sum(1 for n in nodes_data.get("nodes", {}).values() if is_node_active(n))
     
     # Backward compatible status
+    # Note: Keep HTTP 200 even if degraded to prevent breaking CD pipelines
     status_val = "ok" if ai_api_ok and db_ok else "degraded"
-    http_code = 200 if status_val == "ok" else 503
     
     return jsonify({
         "status": status_val,
-        "version": "3.4.2",
+        "version": "3.4.3",
         "uptime_seconds": int(time.time() - START_TIME),
         "services": {
             "database": "ok" if db_ok else "error",
@@ -1404,7 +1405,7 @@ def health():
         "claude": bool(os.getenv("CLAUDE_API_KEY")),
         "proxy": True,
         "admin": True
-    }), http_code
+    }), 200
 
 
 @app.route('/api/v1/pricing', methods=['GET'])

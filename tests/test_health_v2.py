@@ -32,9 +32,9 @@ def test_health_endpoint_format(client, monkeypatch):
     assert "timestamp" in data
 
 def test_health_degraded_status(client, monkeypatch):
-    """Test 503 when critical service is missing."""
+    """Test status field shows degraded when critical service is missing (HTTP still 200)."""
     monkeypatch.delenv("AI_API_KEY", raising=False)
     
     resp = client.get('/health')
-    assert resp.status_code == 503
+    assert resp.status_code == 200
     assert resp.get_json()["status"] == "degraded"
