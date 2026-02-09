@@ -4,12 +4,20 @@ from bridge_web import app, limiter
 
 @pytest.fixture
 def client(monkeypatch):
-    # Set limits BEFORE importing app or enabling limiter
-    monkeypatch.setenv("DEFAULT_LIMIT_MIN", "1 per minute")
+    """Test client with a very strict rate limit."""
+    # Manually override the limiter's default limits for this test
+    # since env vars are already evaluated at import time.
+    original_limits = limiter._default_limits
+    limiter._default_limits = ["1 per minute"]
+    
     app.config['TESTING'] = True
     limiter.enabled = True
+    
     with app.test_client() as client:
         yield client
+        
+    # Restore original limits
+    limiter._default_limits = original_limits
 
 def test_rate_limiting_triggered(client):
     """Test that rate limiting returns 429 after exceeding limit."""
