@@ -1353,6 +1353,22 @@ def proxy_moltbook():
         return jsonify({'error': f'Moltbook proxy error: {str(e)}'}), 500
 
 
+def check_data_files(data_dir: str) -> bool:
+    """Helper to validate readability of all critical data files."""
+    critical_files = [
+        os.getenv("NODES_FILE", os.path.join(data_dir, "nodes.json")),
+        os.path.join(data_dir, "tasks.json"),
+        os.path.join(data_dir, "api_keys.json"),
+        os.path.join(data_dir, "pr_payouts.json")
+    ]
+    for f in critical_files:
+        try:
+            if not (os.path.exists(f) and os.access(f, os.R_OK)):
+                return False
+        except Exception:
+            return False
+    return True
+
 @app.route('/health')
 def health():
     """
@@ -1363,22 +1379,9 @@ def health():
     ai_api_ok = bool(ai_client)
     discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
     
-    # 2. Database/File readability checks (relative paths via DATA_DIR)
+    # 2. Database/File readability checks
     data_dir = os.getenv("DATA_DIR", "/app/data")
-    data_files = [
-        os.getenv("NODES_FILE", os.path.join(data_dir, "nodes.json")),
-        os.path.join(data_dir, "tasks.json"),
-        os.path.join(data_dir, "api_keys.json"),
-        os.path.join(data_dir, "pr_payouts.json")
-    ]
-    readable_files = 0
-    for f in data_files:
-        try:
-            if os.path.exists(f) and os.access(f, os.R_OK):
-                readable_files += 1
-        except Exception:
-            pass
-    db_ok = readable_files == len(data_files)
+    db_ok = check_data_files(data_dir)
     
     # 3. Metrics (using existing helper functions for consistency)
     tasks_data = load_tasks()
@@ -1387,12 +1390,16 @@ def health():
     active_nodes_list = get_active_nodes()
     active_nodes = len(active_nodes_list)
     
+    # 4. Overall Health Status
+    health_status = "healthy"
+    if not (ai_api_ok and db_ok and discord_ok):
+        health_status = "degraded"
+    
     # Return 200 OK with detailed status in separate fields
     return jsonify({
         "status": "ok", # Always 'ok' for legacy monitoring systems
-        "version": "3.4.0",
         "uptime_seconds": int(time.time() - START_TIME),
-        "health_status": "healthy" if ai_api_ok and db_ok else "degraded",
+        "health_status": health_status,
         "services": {
             "database": "ok" if db_ok else "error",
             "discord_alerts": "ok" if discord_ok else "not_configured",
@@ -1402,7 +1409,8 @@ def health():
         "open_tasks": open_tasks,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         # Legacy fields for backward compatibility
-        "ai": bool(ai_client),
+        "version": "3.4.0",
+        "ai": ai_api_ok,
         "claude": bool(claude_client),
         "proxy": True,
         "admin": True
