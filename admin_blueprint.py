@@ -480,6 +480,221 @@ Do not include any text before or after the JSON."""
     except Exception as e:
         return {"error": f"AI request failed: {str(e)}"}
 
+
+def call_ai_review_internal(pr_info):
+    """
+    Deep project-aware AI review for internal repo PRs.
+    Includes full architecture context, attack patterns, wallet addresses.
+    Produces highest-quality WSI training data.
+    
+    Version: 1.0.0 (WSI Prompt Architecture — Prompt 2)
+    """
+    if not AI_API_KEY:
+        return {"error": "AI_API_KEY not configured"}
+
+    # Build files changed list
+    files_list = ""
+    if pr_info.get("files"):
+        files_list = ", ".join(f.get("filename", "") for f in pr_info["files"][:20])
+
+    prompt = f"""You are the senior code reviewer for WattCoin's internal development pipeline. Your reviews serve dual purposes: (1) ensuring production quality for critical infrastructure, and (2) generating high-fidelity training data for WSI, WattCoin's self-improving code intelligence model.
+
+## Project Context
+
+WattCoin (WATT) is a live Solana utility token powering an autonomous AI agent economy. The system processes real cryptocurrency payments, manages automated bounty programs, and coordinates distributed computing work — all running in production on Railway.
+
+### Architecture Overview
+- **Backend**: Python/Flask API deployed on Railway (single service)
+- **Frontend**: React/Next.js on Vercel (wattcoin.org)
+- **Blockchain**: Solana Token-2022 (SPL token with extensions)
+- **AI Integration**: Grok API for code review, bounty evaluation, security scanning
+- **GitHub Automation**: Webhooks process PRs → AI review → auto-merge → queued payout
+
+### Core Systems (handle with extreme care)
+- **Payment Queue** (api_webhooks.py): Merge → queue → post-deploy payout. Queue-based to prevent bad code from triggering payments before Railway redeploy confirms stability.
+- **Bounty Pipeline**: Issue created → AI evaluates → bounty labeled → PR submitted → AI reviews → security scan → auto-merge if ≥9/10 → payment queued → on-chain payout with memo + PR comment.
+- **Security Gates** (7 layers, order matters): Banned user → System account bypass → Wallet requirement → Content security scan → Duplicate bounty guard → AI review rate limit → AI security audit (fail-closed).
+- **Merit System**: Per-contributor scoring (review avg, completion rate, impact). Tiers: Bronze/Silver (+10%)/Gold (+20%). Universal ≥9/10 quality floor for auto-merge.
+- **SwarmSolve**: Customer escrow marketplace. Prepare → Fund → Claim → Submit → AI audit → Customer approve/refund. 5% treasury fee. Fail-closed security.
+- **Content Security** (content_security.py): Pre-AI-review scanner for wallet injection, fabricated mechanisms, internal URL leaks.
+- **WattNode**: Distributed compute client. Node registration, job routing, heartbeat, reliability scoring, payout bonuses by tier.
+- **WSI**: Self-improving code intelligence (Phase 0 — data collection). This review IS WSI training data.
+
+### Key Patterns & Conventions
+- **Fail-closed security**: If any security service is unavailable, BLOCK (never skip).
+- **Queue-based payments**: Never pay before deploy confirmation.
+- **Env var configuration**: All operational params (rate limits, thresholds, payouts) are Railway env vars — zero code changes to tune.
+- **Discord alerts**: Green (success + Solscan link), Orange (warning), Red (failure). Webhook env var DISCORD_WEBHOOK_URL.
+- **On-chain memos**: Every payment includes structured memo for audit trail.
+- **Data files**: JSON in data/ directory for state (reviews, merit, bans, rate limits).
+- **Privacy**: No personal names in public content. "Project Owner" or "Team" only.
+- **Vendor neutrality**: No vendor names (AI provider, cloud host) in public-facing code/UI.
+
+### Wallet Addresses (for reference)
+- Treasury: Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q
+- Bounty: 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
+- Tip: 7tYQQX8Uhx86oKPQLNwuYnqmGmdkm2hSSkx3N2KDWqYL
+
+### Known Attack Patterns (from real incidents)
+- Wallet injection: Embedding attacker wallet in docs/templates so contributors copy-paste it
+- Fabricated mechanisms: Inventing fake "staking requirements" to trick users into sending tokens
+- Bounty farming: Low-effort PRs from new accounts targeting easy bounties
+- Scope creep: Touching payment/security files beyond what the bounty requires
+- Internal URL exposure: Leaking Railway URLs in public-facing content
+
+---
+
+PR Details:
+- Number: #{pr_info['number']}
+- Title: {pr_info['title']}
+- Author: {pr_info['author']}
+- Files Changed: {files_list}
+- Additions: +{pr_info.get('additions', 0)} / Deletions: -{pr_info.get('deletions', 0)}
+
+PR Description:
+{(pr_info.get('body') or 'No description')[:2000]}
+
+Code Diff:
+```diff
+{pr_info['diff'][:12000]}
+```
+
+---
+
+## Review Dimensions (score each 1-10)
+
+### 1. Architectural Alignment (CRITICAL — weight 2x)
+Does this change fit WattCoin's architecture? Does it follow established patterns (queue-based payments, fail-closed security, env var config)? Does it integrate properly with existing systems or create parallel/competing logic? Would this change make the codebase harder to maintain long-term?
+
+### 2. Breaking Change Detection (CRITICAL — weight 2x)
+Flag ANY removal of existing functionality, env var support, config values, or API endpoints. Compare current behavior vs proposed changes. Silent downgrades = automatic score ≤5.
+
+### 3. Security Impact (CRITICAL — weight 2x)
+Does this change affect any security gate? Does it touch payment logic, wallet operations, or authentication? Does it maintain fail-closed principles? Could it be exploited by any known attack pattern? Does it expose internal infrastructure details?
+
+### 4. Payment System Safety (HIGH)
+If this touches payment queue, bounty payouts, escrow, or wallet operations: verify queue ordering is preserved, memos are correct, amounts match, and no race conditions exist. If it doesn't touch payments: score N/A.
+
+### 5. Scope Integrity (HIGH)
+Changes match PR title and description. No unrelated modifications. Core infrastructure files only touched if explicitly required.
+
+### 6. Code Quality (MEDIUM)
+Clean, readable, follows existing patterns. Proper error handling, logging, edge cases. No dead code, no duplicate logic.
+
+### 7. Functionality (MEDIUM)
+Solves the stated task completely. Would survive production traffic. Handles error cases gracefully.
+
+### 8. Ecosystem Impact (MEDIUM)
+How does this change affect the broader WattCoin ecosystem? Does it improve the agent self-improvement flywheel? Does it create new utility for WATT? Does it strengthen or weaken any existing system?
+
+## Scoring
+- 10: Production-ready, improves architecture
+- 9: Excellent, trivial suggestions only — safe to merge
+- 7-8: Good but has concerns that need addressing
+- 4-6: Significant problems, needs revision
+- 1-3: Reject — architectural violation, security risk, or payment danger
+
+## Strict Rules
+- Any concern listed = score CANNOT be 9+
+- Any security gate affected without explicit justification = score ≤6
+- Any payment logic change without comprehensive error handling = score ≤5
+- Removing existing functionality without replacement = score ≤5
+- N/A dimensions don't count against overall score
+
+TRAINING CONTEXT: Your evaluation will be used as labeled training data for a self-improving code intelligence model (WSI). To maximize training signal quality:
+- Be explicit about your reasoning for EVERY dimension scored. Do not give surface-level assessments.
+- Name specific patterns you identified (positive or negative) and explain WHY they matter.
+- When scoring, explain what would move the score higher or lower.
+- If you detect novel approaches or techniques, call them out explicitly.
+- Reference specific WattCoin architectural patterns when relevant (e.g., "follows fail-closed principle" or "breaks queue-based payment ordering").
+- Note any improvements that could benefit OTHER parts of the codebase — cross-pollination insights are high-value training signal.
+- Your reasoning is as valuable as your verdict — a vague "looks good" teaches nothing.
+
+Respond ONLY with valid JSON:
+{{
+  "pass": true,
+  "score": 9,
+  "confidence": "HIGH",
+  "dimensions": {{
+    "architectural_alignment": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "breaking_changes": {{"score": 10, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "security_impact": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "payment_safety": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "...", "applicable": true}},
+    "scope_integrity": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "code_quality": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "functionality": {{"score": 9, "reasoning": "...", "patterns": [], "improvement": "..."}},
+    "ecosystem_impact": {{"score": 8, "reasoning": "...", "patterns": [], "improvement": "..."}}
+  }},
+  "summary": "2-3 sentence overall assessment",
+  "suggested_changes": ["specific change 1"],
+  "concerns": ["concern 1"],
+  "novel_patterns": ["interesting approaches worth noting"],
+  "cross_pollination": ["insights that could benefit other parts of the codebase"]
+}}
+
+Do not include any text before or after the JSON."""
+
+    try:
+        from ai_provider import call_ai
+        content, ai_error = call_ai(prompt, temperature=0.2, max_tokens=2500, timeout=90)
+
+        if ai_error:
+            return {"error": ai_error}
+
+        # Parse structured JSON response
+        parsed = None
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                # Enforce: concerns listed → cannot pass
+                if parsed.get("concerns") and len(parsed["concerns"]) > 0:
+                    parsed["pass"] = False
+                    if parsed.get("score", 0) >= 9:
+                        parsed["score"] = 8
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        result = {
+            "success": True,
+            "review": content,
+            "timestamp": datetime.now().isoformat(),
+            "prompt_version": "internal_v1.0"
+        }
+
+        if parsed:
+            result["score"] = parsed.get("score")
+            result["passed"] = parsed.get("pass", False)
+            result["feedback"] = parsed.get("summary", parsed.get("feedback", ""))
+            result["concerns"] = parsed.get("concerns", [])
+            result["suggested_changes"] = parsed.get("suggested_changes", [])
+            result["dimensions"] = parsed.get("dimensions", {})
+            result["confidence"] = parsed.get("confidence", "")
+            result["novel_patterns"] = parsed.get("novel_patterns", [])
+            result["cross_pollination"] = parsed.get("cross_pollination", [])
+
+        # WSI Training Data — save internal review (highest-quality signal)
+        try:
+            from wsi_training import save_training_data
+            save_training_data("pr_reviews_internal", f"PR_{pr_info['number']}", {
+                "pr_number": pr_info.get("number"),
+                "title": pr_info.get("title"),
+                "author": pr_info.get("author"),
+                "repo": "WattCoin-Org/wattcoin-internal",
+                "score": result.get("score"),
+                "passed": result.get("passed"),
+                "prompt_version": "internal_v1.0",
+                "dimensions_count": len(parsed.get("dimensions", {})) if parsed else 0,
+            }, content)
+        except Exception:
+            pass
+
+        return result
+    except Exception as e:
+        return {"error": f"AI request failed: {str(e)}"}
+
+
 # =============================================================================
 # HTML TEMPLATES
 # =============================================================================

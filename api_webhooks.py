@@ -963,9 +963,8 @@ def handle_internal_pr_review(pr_number, action):
         post_github_comment_internal(pr_number, f"❌ **Review failed:** {review_error}")
         return jsonify({"message": "Review failed", "error": review_error}), 500
     
-    review_data = review_result.get("review", {})
-    score = review_data.get("score", 0)
-    passed = review_data.get("pass", False)
+    score = review_result.get("score", 0)
+    passed = review_result.get("passed", False)
     
     # Discord notification
     review_verdict = "PASS ✅" if passed else "FAIL ❌"
@@ -1067,9 +1066,9 @@ def trigger_ai_review_internal(pr_number):
             "changed_files": pr_data.get("changed_files", 0)
         }
         
-        # Call AI review (same function as public)
-        from admin_blueprint import call_ai_review
-        review_result = call_ai_review(pr_info)
+        # Call AI review (internal deep context prompt — highest-quality WSI training data)
+        from admin_blueprint import call_ai_review_internal
+        review_result = call_ai_review_internal(pr_info)
         
         if review_result:
             # Store review with repo tag
@@ -1085,16 +1084,18 @@ def trigger_ai_review_internal(pr_number):
             save_json_data(PR_REVIEWS_FILE, reviews)
             
             # Post detailed review comment
-            review_data = review_result.get("review", review_result)
-            score = review_data.get("score", 0)
-            summary = review_data.get("summary", review_data.get("feedback", "No summary"))
-            passed = review_data.get("pass", score >= 9)
+            # Read parsed fields from top-level result (not raw content string)
+            score = review_result.get("score", 0)
+            summary = review_result.get("feedback", "No summary")
+            passed = review_result.get("passed", score >= 9)
             
             icon = "✅" if passed else "❌"
+            confidence = review_result.get("confidence", "")
+            conf_tag = f" | Confidence: {confidence}" if confidence else ""
             
             # Build dimensions display
             dims_text = ""
-            dimensions = review_data.get("dimensions", {})
+            dimensions = review_result.get("dimensions", {})
             if dimensions:
                 dims_lines = []
                 for name, dim in dimensions.items():
@@ -1102,18 +1103,29 @@ def trigger_ai_review_internal(pr_number):
                         s = dim["score"]
                         dim_icon = "✅" if s >= 8 else "⚠️" if s >= 5 else "❌"
                         label = name.replace("_", " ").title()
-                        dims_lines.append(f"  {dim_icon} **{label}**: {s}/10")
+                        reasoning = dim.get("reasoning", "")
+                        reason_preview = f" — {reasoning[:120]}..." if reasoning and len(reasoning) > 120 else f" — {reasoning}" if reasoning else ""
+                        dims_lines.append(f"  {dim_icon} **{label}**: {s}/10{reason_preview}")
                 dims_text = "\n".join(dims_lines)
             
-            comment = f"## 🤖 AI Review — {icon} {score}/10\n\n{summary}\n"
+            comment = f"## 🤖 AI Review (Internal) — {icon} {score}/10{conf_tag}\n\n{summary}\n"
             if dims_text:
                 comment += f"\n### Dimensions\n{dims_text}\n"
             
-            concerns = review_data.get("concerns", [])
+            concerns = review_result.get("concerns", [])
             if concerns:
                 comment += f"\n### Concerns\n" + "\n".join(f"- {c}" for c in concerns) + "\n"
             
-            comment += f"\n*Internal pipeline — {'auto-merge eligible' if passed else 'manual review needed'}*"
+            novel = review_result.get("novel_patterns", [])
+            if novel:
+                comment += f"\n### Novel Patterns\n" + "\n".join(f"- 💡 {n}" for n in novel) + "\n"
+            
+            cross = review_result.get("cross_pollination", [])
+            if cross:
+                comment += f"\n### Cross-Pollination\n" + "\n".join(f"- 🔄 {c}" for c in cross) + "\n"
+            
+            prompt_ver = review_result.get("prompt_version", "public")
+            comment += f"\n*Internal pipeline (prompt: {prompt_ver}) — {'auto-merge eligible' if passed else 'manual review needed'}*"
             post_github_comment_internal(pr_number, comment)
             
             return review_result, None
