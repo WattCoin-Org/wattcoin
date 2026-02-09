@@ -1353,7 +1353,7 @@ def proxy_moltbook():
 def health():
     """
     Enhanced health check with service-level status and network metrics.
-    Bounty #90 requirement.
+    Fulfills bounty #90 while maintaining backward compatibility.
     """
     from api_tasks import load_tasks
     from api_nodes import load_nodes, is_node_active
@@ -1362,12 +1362,13 @@ def health():
     ai_api_ok = bool(os.getenv("AI_API_KEY"))
     discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
     
-    # 2. Database/File readability checks
+    # 2. Database/File readability checks (relative paths via DATA_DIR)
+    data_dir = os.getenv("DATA_DIR", "/app/data")
     data_files = [
-        os.getenv("NODES_FILE", "/app/data/nodes.json"),
-        os.path.join(os.getenv("DATA_DIR", "/app/data"), "tasks.json"),
-        "/app/data/api_keys.json",
-        "/app/data/pr_payouts.json"
+        os.getenv("NODES_FILE", os.path.join(data_dir, "nodes.json")),
+        os.path.join(data_dir, "tasks.json"),
+        os.path.join(data_dir, "api_keys.json"),
+        os.path.join(data_dir, "pr_payouts.json")
     ]
     readable_files = 0
     for f in data_files:
@@ -1382,12 +1383,13 @@ def health():
     nodes_data = load_nodes()
     active_nodes = sum(1 for n in nodes_data.get("nodes", {}).values() if is_node_active(n))
     
-    status = "healthy" if ai_api_ok and db_ok else "degraded"
-    http_code = 200 if status == "healthy" else 503
+    # Backward compatible status
+    status_val = "ok" if ai_api_ok and db_ok else "degraded"
+    http_code = 200 if status_val == "ok" else 503
     
     return jsonify({
-        "status": status,
-        "version": "3.4.1",
+        "status": status_val,
+        "version": "3.4.2",
         "uptime_seconds": int(time.time() - START_TIME),
         "services": {
             "database": "ok" if db_ok else "error",
@@ -1396,7 +1398,12 @@ def health():
         },
         "active_nodes": active_nodes,
         "open_tasks": open_tasks,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Legacy fields for backward compatibility
+        "ai": ai_api_ok,
+        "claude": bool(os.getenv("CLAUDE_API_KEY")),
+        "proxy": True,
+        "admin": True
     }), http_code
 
 
