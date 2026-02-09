@@ -100,7 +100,7 @@ from flask_limiter.util import get_remote_address
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=[os.getenv("RATE_LIMIT_DEFAULT", "60 per minute"), "1000 per hour"],
+    default_limits=["100 per minute", "1000 per hour"],
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -111,16 +111,15 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    retry_after = e.description if hasattr(e, "description") and isinstance(e.description, str) and "seconds" in e.description else "60 seconds"
     response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": retry_after
+        "retry_after": "60 seconds"
     })
-    response.headers["Retry-After"] = retry_after.split()[0] if " " in retry_after else "60"
+    response.headers["Retry-After"] = "60"
     return response, 429
 
-logger.info(f"Flask-Limiter initialized with default limits: {os.getenv('RATE_LIMIT_DEFAULT', '60 per minute')}, 1000/hour")
+logger.info("Flask-Limiter initialized with default limits: 100/minute, 1000/hour")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -1404,7 +1403,11 @@ def health():
         'services': services,
         'active_nodes': active_nodes,
         'open_tasks': open_tasks_count,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'ai': bool(ai_client), 
+        'claude': bool(claude_client),
+        'proxy': True,
+        'admin': True
     }), status_code
 
 
