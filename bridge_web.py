@@ -1393,14 +1393,14 @@ def health():
         "uptime_seconds": int(time.time() - START_TIME),
         "services": {
             "database": "ok" if db_ok else "error",
-            "discord": "ok" if discord_ok else "not_configured",
-            "ai_api": "ok" if ai_api_ok else "error"
+            "discord_alerts": "ok" if discord_ok else "not_configured",
+            "ai_integration": "ok" if ai_api_ok else "error"
         },
         "active_nodes": active_nodes,
         "open_tasks": open_tasks,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         # Legacy fields for backward compatibility
-        "ai": ai_api_ok,
+        "ai": bool(ai_client),
         "claude": bool(claude_client),
         "proxy": True,
         "admin": True
