@@ -1491,7 +1491,7 @@ def health():
         "claude": bool(claude_client),
         "proxy": True,
         "admin": True
-    }), 200 if status == "ok" else 503
+    }), 200
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
