@@ -29,8 +29,10 @@ class TestWattBot(unittest.TestCase):
         self.assertFalse(is_valid_solana_address(["address"]))
 
     def test_malicious_input(self):
-        # 7. Malicious characters
-        self.assertFalse(is_valid_solana_address("Dv4QWv74JaAWuQPecptgTDsfYnSw5HKwYuCMNaG6CxFM; DROP TABLE nodes;"))
+        # 7. Malicious characters (checking that they fail validation)
+        # Using symbols and sequences that should be rejected by the base58/regex logic
+        self.assertFalse(is_valid_solana_address("Dv4QWv74JaAWuQPecptgTDsfYnSw5HKwYuCMNaG6CxFM--injection"))
+        self.assertFalse(is_valid_solana_address("Dv4QWv74JaAWuQPecptgTDsfYnSw5HKwYuCMNaG6CxFM' OR '1'='1"))
 
     @patch('discord_bot.bot.http')
     async def test_balance_logic(self, mock_http):

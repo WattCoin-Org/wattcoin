@@ -162,7 +162,7 @@ async def bounties(interaction: discord.Interaction):
         logger.error(f"Bounty API error: {e}")
         await interaction.followup.send("❌ Could not fetch bounties. The API might be offline.")
 
-@bot.tree.command(name="stats", description="Get network-wide statistics")
+@bot.tree.command(name="stats", description="Get network-wide statistics and node reliability")
 @app_commands.checks.cooldown(1, 15.0, key=lambda i: (i.guild_id, i.user.id))
 async def stats(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -173,27 +173,44 @@ async def stats(interaction: discord.Interaction):
         
         embed = discord.Embed(
             title="📊 WattCoin Network Stats",
+            description="Real-time infrastructure metrics",
             color=0x3498DB,
             timestamp=datetime.now()
         )
         
+        # Node Statistics
         nodes = data.get("nodes", {})
-        embed.add_field(name="Nodes", value=f"🟢 {nodes.get('active', 0)} Active\n⚪ {nodes.get('total_registered', 0)} Total", inline=True)
+        active = nodes.get('active', 0)
+        total = nodes.get('total_registered', 0)
+        embed.add_field(name="Nodes Status", value=f"🟢 **{active}** Active\n⚪ **{total}** Registered", inline=True)
         
+        # Reliability Metrics
         reliability = data.get("reliability", {})
-        embed.add_field(name="Reliability", value=f"Avg Score: {reliability.get('avg_score', 0)}/100", inline=True)
+        avg_score = reliability.get('avg_score', 0)
+        uptime = reliability.get('avg_uptime', 'N/A')
+        embed.add_field(name="Network Reliability", value=f"Score: **{avg_score}/100**\nUptime: **{uptime}**", inline=True)
         
+        # Economic Data
         payouts = data.get("payouts", {})
-        embed.add_field(name="WATT Distributed", value=f"**{payouts.get('total_watt', 0):,} WATT**", inline=False)
+        total_watt = payouts.get('total_watt', 0)
+        pending = payouts.get('pending_watt', 0)
+        embed.add_field(name="WATT Distribution", value=f"Distributed: **{total_watt:,} WATT**\nPending: **{pending:,} WATT**", inline=False)
         
+        # Job Performance
         jobs = data.get("jobs", {})
-        embed.add_field(name="Jobs Completed", value=f"{jobs.get('total_completed', 0):,}", inline=True)
+        completed = jobs.get('total_completed', 0)
+        failed = jobs.get('total_failed', 0)
+        success_rate = (completed / (completed + failed) * 100) if (completed + failed) > 0 else 0
+        embed.add_field(name="Job Performance", value=f"Done: **{completed:,}**\nSuccess Rate: **{success_rate:.1f}%**", inline=True)
         
-        embed.set_footer(text="WattCoin Infrastructure")
+        embed.set_footer(text="WattCoin Infrastructure Monitoring")
         await interaction.followup.send(embed=embed)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Stats API connection error: {e}")
+        await interaction.followup.send("❌ Error connecting to Stats API.")
     except Exception as e:
-        logger.error(f"Stats API error: {e}")
-        await interaction.followup.send("❌ Error fetching network statistics.")
+        logger.error(f"Stats processing error: {e}")
+        await interaction.followup.send("❌ Error processing network statistics.")
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
