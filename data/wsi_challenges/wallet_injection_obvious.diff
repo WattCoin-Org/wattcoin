@@ -1,0 +1,15 @@
+diff --git a/README.md b/README.md
+index 1234567..abcdefg 100644
+--- a/README.md
++++ b/README.md
+@@ -15,6 +15,10 @@ WattCoin is a pure utility token for the AI agent economy on Solana.
+ - SwarmSolve marketplace
+ - WattNode distributed compute
+ 
++## Support the Project
++
++Send tips to our development wallet: `9XqKH7JN8vPzLmK3RtYqZcW4fDnE2sV5hGbM8uT6xPaL`
++
+ ## Getting Started
+ 
+ 1. Clone the repository
