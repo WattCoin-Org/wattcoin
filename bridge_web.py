@@ -65,6 +65,9 @@ from scraper_errors import (
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
 
+# Track app start time for uptime calculation
+_app_start_time = time.time()
+
 # =============================================================================
 # LOGGING
 # =============================================================================
@@ -1348,16 +1351,178 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
-    return jsonify({
-        'status': 'ok', 
-        'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+    """
+    Health check endpoint with service-level checks.
+    Returns 200 if healthy, 503 if critical services are degraded.
+    Supports ?detailed=true for extended metrics.
+    All basic checks are lightweight (file exists, env var present) - no HTTP calls.
+    Detailed mode includes system metrics and lightweight external service validation.
+    """
+    try:
+        # Check if detailed mode requested
+        detailed = request.args.get('detailed', 'false').lower() in ('true', '1', 'yes')
+
+        # Service status checks (lightweight - no HTTP calls)
+        services = {
+            'database': 'ok',
+            'discord': 'ok',
+            'ai_api': 'ok',
+            'claude_api': 'ok'
+        }
+
+        # Check data files readable (database service)
+        data_files = [
+            '/app/data/bounty_reviews.json',
+            '/app/data/api_keys.json',
+            '/app/data/pr_payouts.json'
+        ]
+        try:
+            for f in data_files:
+                if not os.path.exists(f):
+                    services['database'] = 'error'
+                    break
+                # Verify file is readable
+                with open(f, 'r') as _:
+                    pass
+        except Exception:
+            services['database'] = 'error'
+
+        # Check Discord webhook configured
+        if not os.getenv('DISCORD_WEBHOOK_URL'):
+            services['discord'] = 'error'
+
+        # Check AI API key present
+        if not os.getenv('AI_API_KEY'):
+            services['ai_api'] = 'error'
+        elif detailed and ai_client:
+            # In detailed mode, verify AI API is actually responsive
+            try:
+                # Lightweight check - just list models or similar low-cost call
+                ai_client.models.list(timeout=5)
+            except Exception:
+                services['ai_api'] = 'degraded'
+
+        # Check Claude API key present
+        if not os.getenv('CLAUDE_API_KEY'):
+            services['claude_api'] = 'error'
+        elif detailed and claude_client:
+            # In detailed mode, verify Claude API is responsive
+            try:
+                # Lightweight check - just validate API key is recognized
+                claude_client.beta.models.list(timeout=5)
+            except Exception:
+                services['claude_api'] = 'degraded'
+
+        # Calculate uptime
+        uptime_seconds = int(time.time() - _app_start_time)
+
+        # Get active nodes count
+        try:
+            active_nodes = len(get_active_nodes())
+        except Exception:
+            active_nodes = 0
+
+        # Get open tasks count from data file
+        open_tasks = 0
+        try:
+            with open('/app/data/bounty_reviews.json', 'r') as f:
+                data = json.load(f)
+                # Count tasks with status 'open' or 'pending'
+                if isinstance(data, dict) and 'tasks' in data:
+                    open_tasks = len([t for t in data['tasks'] if t.get('status') in ('open', 'pending')])
+                elif isinstance(data, dict) and 'reviews' in data:
+                    open_tasks = len([r for r in data['reviews'] if r.get('status') in ('open', 'pending')])
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+
+        # Determine overall status
+        # Degraded if critical services (database or ai_api) are down
+        critical_services_ok = services['database'] == 'ok' and services['ai_api'] == 'ok'
+        status = 'healthy' if critical_services_ok else 'degraded'
+        status_code = 200 if critical_services_ok else 503
+
+        # Build response
+        response = {
+            'status': status,
+            'version': '3.4.0',
+            'uptime_seconds': uptime_seconds,
+            'services': services,
+            'active_nodes': active_nodes,
+            'open_tasks': open_tasks,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+
+        # Add detailed metrics if requested
+        if detailed:
+            # System health metrics
+            system_metrics = {}
+
+            # Memory usage - try psutil first, fall back to /proc
+            try:
+                import psutil
+                mem = psutil.virtual_memory()
+                system_metrics['memory'] = {
+                    'total_mb': int(mem.total / 1024 / 1024),
+                    'available_mb': int(mem.available / 1024 / 1024),
+                    'percent_used': mem.percent
+                }
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                system_metrics['cpu'] = {
+                    'percent': cpu_percent
+                }
+            except ImportError:
+                # Fallback to reading /proc on Linux
+                try:
+                    with open('/proc/meminfo', 'r') as f:
+                        meminfo = f.read()
+                        mem_total = 0
+                        mem_available = 0
+                        for line in meminfo.split('\n'):
+                            if line.startswith('MemTotal:'):
+                                mem_total = int(line.split()[1]) // 1024
+                            elif line.startswith('MemAvailable:'):
+                                mem_available = int(line.split()[1]) // 1024
+                        if mem_total:
+                            mem_used_pct = int(((mem_total - mem_available) / mem_total) * 100)
+                            system_metrics['memory'] = {
+                                'total_mb': mem_total,
+                                'available_mb': mem_available,
+                                'percent_used': mem_used_pct
+                            }
+                    with open('/proc/loadavg', 'r') as f:
+                        loadavg = f.read().strip().split()
+                        system_metrics['cpu'] = {
+                            'load_avg_1m': float(loadavg[0])
+                        }
+                except Exception:
+                    pass
+
+            # Disk usage for data directory
+            try:
+                if os.path.exists('/app/data'):
+                    import psutil
+                    disk = psutil.disk_usage('/app/data')
+                    system_metrics['disk'] = {
+                        'total_gb': int(disk.total / 1024 / 1024 / 1024),
+                        'free_gb': int(disk.free / 1024 / 1024 / 1024),
+                        'percent_used': disk.percent
+                    }
+            except Exception:
+                pass
+
+            response['system'] = system_metrics
+            response['detailed'] = True
+
+        return jsonify(response), status_code
+
+    except Exception as e:
+        # Catch-all error handler to ensure we always return JSON
+        logger.error(f"Health check error: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': 'Health check failed',
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }), 503
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
