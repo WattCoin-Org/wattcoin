@@ -716,6 +716,10 @@ DASHBOARD_TEMPLATE = """
                 📋 Agent Tasks
             </a>
 
+            <a href="{{ url_for('internal.internal_page') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔧 Internal Pipeline
+            </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
                 🔑 Scraper Keys
@@ -1744,6 +1748,10 @@ API_KEYS_TEMPLATE = """
                 📋 Agent Tasks
             </a>
 
+            <a href="{{ url_for('internal.internal_page') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔧 Internal Pipeline
+            </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
                 🔑 Scraper Keys
@@ -2365,6 +2373,10 @@ CLEAR_DATA_HTML = """
                 📋 Agent Tasks
             </a>
 
+            <a href="{{ url_for('internal.internal_page') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔧 Internal Pipeline
+            </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
                 🔑 Scraper Keys
@@ -2495,6 +2507,10 @@ SUBMISSIONS_HTML = """
                 📋 Agent Tasks
             </a>
 
+            <a href="{{ url_for('internal.internal_page') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔧 Internal Pipeline
+            </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
                 🔑 Scraper Keys
