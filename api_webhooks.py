@@ -892,6 +892,7 @@ def save_banned_users(banned_set):
 AUTO_BAN_FAIL_THRESHOLD_NO_MERGES = int(os.environ.get("AUTO_BAN_FAILS_NO_MERGES", "3"))
 AUTO_BAN_FAIL_THRESHOLD_WITH_MERGES = int(os.environ.get("AUTO_BAN_FAILS_WITH_MERGES", "5"))
 AUTO_BAN_SCORE_THRESHOLD = int(os.environ.get("AUTO_BAN_SCORE_THRESHOLD", "5"))
+AUTO_BAN_SECURITY_FLAGS = int(os.environ.get("AUTO_BAN_SECURITY_FLAGS", "2"))
 
 def record_failed_review(github_username, pr_number, score):
     """Record a failed AI review (score < threshold) in contributor reputation data."""
@@ -944,6 +945,59 @@ def record_failed_review(github_username, pr_number, score):
     
     print(f"[AUTO-BAN] Recorded failed review for @{github_username}: PR #{pr_number} score={score}", flush=True)
 
+def record_security_flag(github_username, pr_number, flag_types):
+    """Record a content security flag in contributor reputation data."""
+    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+    if github_username.lower() in SYSTEM_ACCOUNTS:
+        return
+    
+    data = load_reputation_data()
+    contributors = data.get("contributors", {})
+    
+    # Case-insensitive lookup
+    found_key = None
+    for key in contributors:
+        if key.lower() == github_username.lower():
+            found_key = key
+            break
+    
+    if not found_key:
+        found_key = github_username
+        contributors[found_key] = {
+            "github": github_username,
+            "score": 0,
+            "tier": "new",
+            "merged_prs": [],
+            "rejected_prs": [],
+            "reverted_prs": [],
+            "failed_reviews": [],
+            "security_flags": [],
+            "total_watt_earned": 0,
+            "last_updated": None
+        }
+    
+    contributor = contributors[found_key]
+    
+    # Initialize security_flags if missing (existing contributors)
+    if "security_flags" not in contributor:
+        contributor["security_flags"] = []
+    
+    # Record security flag (deduplicate by PR number)
+    existing_prs = [sf["pr"] for sf in contributor["security_flags"]]
+    if pr_number not in existing_prs:
+        contributor["security_flags"].append({
+            "pr": pr_number,
+            "flags": flag_types,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        })
+    
+    contributor["last_updated"] = datetime.utcnow().isoformat() + "Z"
+    data["contributors"] = contributors
+    save_reputation_data(data)
+    
+    print(f"[AUTO-BAN] Recorded security flag for @{github_username}: PR #{pr_number} flags={flag_types}", flush=True)
+
+
 def check_auto_ban(github_username):
     """
     Check if contributor should be auto-banned based on failed review history.
@@ -977,6 +1031,38 @@ def check_auto_ban(github_username):
         return True, f"{fail_count} failed reviews (threshold: {AUTO_BAN_FAIL_THRESHOLD_WITH_MERGES})"
     
     return False, f"Below threshold ({fail_count} fails, {merge_count} merges)"
+
+def check_auto_ban_security(github_username):
+    """
+    Check if contributor should be auto-banned based on content security flags.
+    Returns: (should_ban: bool, reason: str)
+    
+    Threshold (configurable via env var):
+    - 2 security flags with 0 merges → auto-ban
+    """
+    # Never auto-ban system accounts
+    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+    if github_username.lower() in SYSTEM_ACCOUNTS:
+        return False, "System account"
+    
+    # Already banned? Skip
+    banned = load_banned_users()
+    if github_username.lower() in banned:
+        return False, "Already banned"
+    
+    rep = load_contributor_reputation(github_username)
+    security_flags = rep.get("security_flags", [])
+    merged_prs = rep.get("merged_prs", [])
+    
+    flag_count = len(security_flags)
+    merge_count = len(merged_prs)
+    
+    # Only ban if user has 0 successful merges and meets flag threshold
+    if merge_count == 0 and flag_count >= AUTO_BAN_SECURITY_FLAGS:
+        flag_types_list = [sf.get("flags", "unknown") for sf in security_flags]
+        return True, f"{flag_count} content security flags with 0 successful merges (flags: {', '.join(flag_types_list)})"
+    
+    return False, f"Below threshold ({flag_count} security flags, {merge_count} merges)"
 
 def execute_auto_ban(github_username, reason, triggering_pr=None):
     """
@@ -1455,6 +1541,15 @@ def handle_pr_review_trigger(pr_number, action):
             )
             
             print(f"[CONTENT-SECURITY] PR #{pr_number} flagged — {flag_types}", flush=True)
+            
+            # Record security flag in contributor reputation
+            record_security_flag(pr_author, pr_number, flag_types)
+            
+            # Check if this should trigger auto-ban
+            should_ban, ban_reason = check_auto_ban_security(pr_author)
+            if should_ban:
+                execute_auto_ban(pr_author, ban_reason, triggering_pr=pr_number)
+            
             return jsonify({"message": "Content security flag", "pr": pr_number}), 200
         else:
             print(f"[CONTENT-SECURITY] PR #{pr_number} passed content scan", flush=True)
