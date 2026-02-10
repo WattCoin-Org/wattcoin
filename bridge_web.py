@@ -64,6 +64,7 @@ from scraper_errors import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
+app._server_start_time = time.time()
 
 # =============================================================================
 # LOGGING
@@ -1348,16 +1349,62 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    """
+    Enhanced health check endpoint for monitoring system status and service availability.
+    Includes checks for data files, Discord configuration, and AI API status.
+    """
     active_nodes = len(get_active_nodes())
-    return jsonify({
-        'status': 'ok', 
+    
+    # Check data files readability
+    # Note: Using direct paths per existing config in this file
+    reviews_path = "/app/data/bounty_reviews.json"
+    api_keys_path = "/app/data/api_keys.json"
+    tasks_path = os.path.join(os.getenv('DATA_DIR', '/app/data'), 'tasks.json')
+    
+    status_api_keys = "ok" if os.access(api_keys_path, os.R_OK) else "error"
+    status_reviews = "ok" if os.access(reviews_path, os.R_OK) else "error"
+    
+    # Count open tasks from tasks.json
+    open_tasks_count = 0
+    status_tasks = "ok"
+    try:
+        if os.path.exists(tasks_path):
+            with open(tasks_path, 'r') as f:
+                tasks_data = json.load(f)
+                tasks = tasks_data.get("tasks", {})
+                open_tasks_count = sum(1 for t in tasks.values() if t.get("status") == "open")
+        else:
+            status_tasks = "missing"
+    except Exception:
+        status_tasks = "error"
+
+    # Services connectivity/config checks
+    services = {
+        "database": status_api_keys,
+        "tasks_data": status_tasks,
+        "bounty_reviews": status_reviews,
+        "discord": "ok" if os.getenv("DISCORD_WEBHOOK_URL") else "missing",
+        "ai_api": "ok" if bool(ai_client) else "missing"
+    }
+
+    # Determine overall health status
+    # Database and tasks_data are considered critical
+    is_healthy = services["database"] == "ok" and services["tasks_data"] != "error"
+    
+    uptime = int(time.time() - getattr(app, '_server_start_time', time.time()))
+    
+    response_data = {
+        'status': 'healthy' if is_healthy else 'degraded',
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': uptime,
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks_count,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    
+    status_code = 200 if is_healthy else 503
+    return jsonify(response_data), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
