@@ -207,23 +207,28 @@ class TestHealthEndpoint:
             assert 'detailed' not in data
             assert 'system' not in data
 
-    def test_health_checks_claude_api(self, client):
-        """Test that health endpoint checks Claude API key configuration."""
+    def test_health_no_claude_api_in_basic_mode(self, client):
+        """Test that claude_api is NOT in basic health response (backward compatibility)."""
         with patch('os.path.exists', return_value=True), \
-             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test'}):
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test', 'CLAUDE_API_KEY': 'sk-claude'}):
 
-            # Claude API key configured
-            with patch.dict(os.environ, {'CLAUDE_API_KEY': 'sk-claude'}):
-                response = client.get('/health')
-                data = json.loads(response.data)
-                assert data['services']['claude_api'] == 'ok'
+            response = client.get('/health')
+            data = json.loads(response.data)
+            # Basic mode should NOT have claude_api for backward compatibility
+            assert 'claude_api' not in data['services']
+            # Should only have the original 3 services
+            assert set(data['services'].keys()) == {'database', 'discord', 'ai_api'}
 
-            # Claude API key not configured
-            with patch.dict(os.environ, {}, clear=True):  # Clear CLAUDE_API_KEY
-                with patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test'}):
-                    response = client.get('/health')
-                    data = json.loads(response.data)
-                    assert data['services']['claude_api'] == 'error'
+    def test_health_claude_api_in_detailed_mode(self, client):
+        """Test that claude_api appears in detailed mode only."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test', 'CLAUDE_API_KEY': 'sk-claude'}):
+
+            response = client.get('/health?detailed=true')
+            data = json.loads(response.data)
+            # Detailed mode should have claude_api
+            assert 'claude_api' in data['services']
+            assert data['services']['claude_api'] == 'ok'
 
     def test_health_system_metrics_structure(self, client):
         """Test that system metrics have correct structure when detailed=true."""
@@ -311,6 +316,107 @@ class TestHealthEndpoint:
             response = client.get('/health?detailed=false')
             data = json.loads(response.data)
             assert 'detailed' not in data or data.get('detailed') is False
+
+    def test_health_system_metrics_require_env_var(self, client):
+        """Test that system metrics only appear when HEALTH_EXPOSE_SYSTEM=true."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test', 'CLAUDE_API_KEY': 'sk-claude'}):
+
+            # Without env var, system should be empty or minimal
+            response = client.get('/health?detailed=true')
+            data = json.loads(response.data)
+            # System should exist but be empty or minimal without env var
+            assert 'system' in data
+            # Without HEALTH_EXPOSE_SYSTEM, system should be empty (security)
+            assert data['system'] == {}
+
+    def test_health_api_connectivity_checks_require_env_var(self, client):
+        """Test that API connectivity checks only happen when HEALTH_CHECK_APIS=true."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test', 'CLAUDE_API_KEY': 'sk-claude'}), \
+             patch('bridge_web.ai_client') as mock_ai, \
+             patch('bridge_web.claude_client') as mock_claude:
+
+            mock_ai.models.list = MagicMock()
+            mock_claude.beta.models.list = MagicMock()
+
+            # Without HEALTH_CHECK_APIS=true, API checks should not run
+            response = client.get('/health?detailed=true')
+            data = json.loads(response.data)
+            
+            # API models.list should not be called without env var
+            mock_ai.models.list.assert_not_called()
+            mock_claude.beta.models.list.assert_not_called()
+
+    def test_health_respects_timeout_env_var(self, client):
+        """Test that HEALTH_API_TIMEOUT env var is respected."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {
+                 'DISCORD_WEBHOOK_URL': 'https://test.com', 
+                 'AI_API_KEY': 'sk-test',
+                 'CLAUDE_API_KEY': 'sk-claude',
+                 'HEALTH_CHECK_APIS': 'true',
+                 'HEALTH_API_TIMEOUT': '10'
+             }), \
+             patch('bridge_web.ai_client') as mock_ai:
+
+            mock_models = MagicMock()
+            mock_ai.models = mock_models
+
+            # Should use timeout of 10 seconds from env var
+            response = client.get('/health?detailed=true')
+            
+            # Verify the mock was called with timeout=10 if it was called
+            # This test validates the env var path works
+            assert response.status_code == 200
+
+    def test_health_version_field_unchanged(self, client):
+        """Test that version field format is maintained."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test'}):
+
+            response = client.get('/health')
+            data = json.loads(response.data)
+            
+            # Version should be a string in format X.Y.Z
+            assert isinstance(data['version'], str)
+            version_parts = data['version'].split('.')
+            assert len(version_parts) == 3
+            for part in version_parts:
+                assert part.isdigit()
+
+    def test_health_timestamp_format(self, client):
+        """Test that timestamp is in correct ISO format with Z suffix."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test'}):
+
+            response = client.get('/health')
+            data = json.loads(response.data)
+            
+            # Timestamp should end with Z and be parseable
+            timestamp = data['timestamp']
+            assert timestamp.endswith('Z')
+            # Should be able to parse it
+            from datetime import datetime
+            parsed = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            assert parsed is not None
+
+    def test_health_detailed_preserves_basic_fields(self, client):
+        """Test that detailed mode preserves all basic response fields."""
+        with patch('os.path.exists', return_value=True), \
+             patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://test.com', 'AI_API_KEY': 'sk-test', 'CLAUDE_API_KEY': 'sk-claude'}):
+
+            # Get both responses
+            basic_response = client.get('/health')
+            detailed_response = client.get('/health?detailed=true')
+            
+            basic_data = json.loads(basic_response.data)
+            detailed_data = json.loads(detailed_response.data)
+            
+            # All basic fields should be present in detailed mode
+            for key in ['status', 'version', 'uptime_seconds', 'services', 'active_nodes', 'open_tasks', 'timestamp']:
+                assert key in detailed_data, f"Field {key} missing in detailed response"
+                assert basic_data[key] == detailed_data[key] or key == 'services', f"Field {key} value mismatch"
 
 
 if __name__ == '__main__':

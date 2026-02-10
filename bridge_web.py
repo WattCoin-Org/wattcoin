@@ -1363,11 +1363,11 @@ def health():
         detailed = request.args.get('detailed', 'false').lower() in ('true', '1', 'yes')
 
         # Service status checks (lightweight - no HTTP calls)
+        # Note: Only these 3 services for backward compatibility
         services = {
             'database': 'ok',
             'discord': 'ok',
-            'ai_api': 'ok',
-            'claude_api': 'ok'
+            'ai_api': 'ok'
         }
 
         # Check data files readable (database service)
@@ -1394,26 +1394,11 @@ def health():
         # Check AI API key present
         if not os.getenv('AI_API_KEY'):
             services['ai_api'] = 'error'
-        elif detailed and ai_client:
-            # In detailed mode, verify AI API is actually responsive
-            try:
-                # Lightweight check - just list models or similar low-cost call
-                ai_client.models.list(timeout=5)
-            except Exception:
-                services['ai_api'] = 'degraded'
-
-        # Check Claude API key present
-        if not os.getenv('CLAUDE_API_KEY'):
-            services['claude_api'] = 'error'
-        elif detailed and claude_client:
-            # In detailed mode, verify Claude API is responsive
-            try:
-                # Lightweight check - just validate API key is recognized
-                claude_client.beta.models.list(timeout=5)
-            except Exception:
-                services['claude_api'] = 'degraded'
 
         # Calculate uptime
+        # Note: In multi-worker deployments (e.g., gunicorn with multiple workers),
+        # each worker has its own _app_start_time. For a global uptime metric,
+        # consider using a shared cache or external monitoring.
         uptime_seconds = int(time.time() - _app_start_time)
 
         # Get active nodes count
@@ -1441,7 +1426,7 @@ def health():
         status = 'healthy' if critical_services_ok else 'degraded'
         status_code = 200 if critical_services_ok else 503
 
-        # Build response
+        # Build response - maintain exact backward compatible format
         response = {
             'status': status,
             'version': '3.4.0',
@@ -1454,61 +1439,84 @@ def health():
 
         # Add detailed metrics if requested
         if detailed:
-            # System health metrics
-            system_metrics = {}
-
-            # Memory usage - try psutil first, fall back to /proc
-            try:
-                import psutil
-                mem = psutil.virtual_memory()
-                system_metrics['memory'] = {
-                    'total_mb': int(mem.total / 1024 / 1024),
-                    'available_mb': int(mem.available / 1024 / 1024),
-                    'percent_used': mem.percent
-                }
-                cpu_percent = psutil.cpu_percent(interval=0.1)
-                system_metrics['cpu'] = {
-                    'percent': cpu_percent
-                }
-            except ImportError:
-                # Fallback to reading /proc on Linux
+            # Configurable timeout for API checks (env var or default)
+            api_timeout = int(os.getenv('HEALTH_API_TIMEOUT', '5'))
+            
+            # Extended services for detailed mode
+            detailed_services = dict(services)
+            detailed_services['claude_api'] = 'ok' if os.getenv('CLAUDE_API_KEY') else 'error'
+            
+            # In detailed mode, verify AI APIs are actually responsive (optional)
+            if ai_client and os.getenv('HEALTH_CHECK_APIS', 'false').lower() == 'true':
                 try:
-                    with open('/proc/meminfo', 'r') as f:
-                        meminfo = f.read()
-                        mem_total = 0
-                        mem_available = 0
-                        for line in meminfo.split('\n'):
-                            if line.startswith('MemTotal:'):
-                                mem_total = int(line.split()[1]) // 1024
-                            elif line.startswith('MemAvailable:'):
-                                mem_available = int(line.split()[1]) // 1024
-                        if mem_total:
-                            mem_used_pct = int(((mem_total - mem_available) / mem_total) * 100)
-                            system_metrics['memory'] = {
-                                'total_mb': mem_total,
-                                'available_mb': mem_available,
-                                'percent_used': mem_used_pct
+                    ai_client.models.list(timeout=api_timeout)
+                except Exception:
+                    detailed_services['ai_api'] = 'degraded'
+            
+            if claude_client and os.getenv('HEALTH_CHECK_APIS', 'false').lower() == 'true':
+                try:
+                    claude_client.beta.models.list(timeout=api_timeout)
+                except Exception:
+                    detailed_services['claude_api'] = 'degraded'
+            
+            response['services'] = detailed_services
+
+            # System health metrics (opt-in via env var for security)
+            system_metrics = {}
+            
+            if os.getenv('HEALTH_EXPOSE_SYSTEM', 'false').lower() == 'true':
+                # Memory usage - try psutil first, fall back to /proc
+                try:
+                    import psutil
+                    mem = psutil.virtual_memory()
+                    system_metrics['memory'] = {
+                        'total_mb': int(mem.total / 1024 / 1024),
+                        'available_mb': int(mem.available / 1024 / 1024),
+                        'percent_used': mem.percent
+                    }
+                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    system_metrics['cpu'] = {
+                        'percent': cpu_percent
+                    }
+                except ImportError:
+                    # Fallback to reading /proc on Linux
+                    try:
+                        with open('/proc/meminfo', 'r') as f:
+                            meminfo = f.read()
+                            mem_total = 0
+                            mem_available = 0
+                            for line in meminfo.split('\n'):
+                                if line.startswith('MemTotal:'):
+                                    mem_total = int(line.split()[1]) // 1024
+                                elif line.startswith('MemAvailable:'):
+                                    mem_available = int(line.split()[1]) // 1024
+                            if mem_total:
+                                mem_used_pct = int(((mem_total - mem_available) / mem_total) * 100)
+                                system_metrics['memory'] = {
+                                    'total_mb': mem_total,
+                                    'available_mb': mem_available,
+                                    'percent_used': mem_used_pct
+                                }
+                        with open('/proc/loadavg', 'r') as f:
+                            loadavg = f.read().strip().split()
+                            system_metrics['cpu'] = {
+                                'load_avg_1m': float(loadavg[0])
                             }
-                    with open('/proc/loadavg', 'r') as f:
-                        loadavg = f.read().strip().split()
-                        system_metrics['cpu'] = {
-                            'load_avg_1m': float(loadavg[0])
+                    except Exception:
+                        pass
+
+                # Disk usage for data directory
+                try:
+                    if os.path.exists('/app/data'):
+                        import psutil
+                        disk = psutil.disk_usage('/app/data')
+                        system_metrics['disk'] = {
+                            'total_gb': int(disk.total / 1024 / 1024 / 1024),
+                            'free_gb': int(disk.free / 1024 / 1024 / 1024),
+                            'percent_used': disk.percent
                         }
                 except Exception:
                     pass
-
-            # Disk usage for data directory
-            try:
-                if os.path.exists('/app/data'):
-                    import psutil
-                    disk = psutil.disk_usage('/app/data')
-                    system_metrics['disk'] = {
-                        'total_gb': int(disk.total / 1024 / 1024 / 1024),
-                        'free_gb': int(disk.free / 1024 / 1024 / 1024),
-                        'percent_used': disk.percent
-                    }
-            except Exception:
-                pass
 
             response['system'] = system_metrics
             response['detailed'] = True
