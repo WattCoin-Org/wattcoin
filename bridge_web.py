@@ -1346,6 +1346,86 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    """
+    Extended health check endpoint with service-level diagnostics.
+    Checks: data files readable, Discord webhook configured, AI API key present.
+    Returns: active_nodes count, open_tasks count.
+    Response time: < 500ms
+    """
+    start_time = time.time()
+    
+    # Service checks
+    checks = {
+        'ai_api_key': bool(AI_API_KEY),
+        'claude_api_key': bool(CLAUDE_API_KEY),
+        'discord_webhook': bool(os.getenv("DISCORD_WEBHOOK_URL", "")),
+    }
+    
+    # Data file checks (track readability)
+    data_dir = os.getenv('DATA_DIR', '/app/data')
+    data_files = {
+        'tasks': os.path.join(data_dir, 'tasks.json'),
+        'nodes': os.path.join(data_dir, 'nodes.json'),
+        'reputation': os.path.join(data_dir, 'reputation.json'),
+    }
+    
+    files_readable = {}
+    for name, path in data_files.items():
+        try:
+            readable = os.path.exists(path) and os.access(path, os.R_OK)
+            files_readable[name] = readable
+        except Exception:
+            files_readable[name] = False
+    
+    checks['data_files_readable'] = files_readable
+    
+    # Count active nodes
+    try:
+        active_nodes = len(get_active_nodes())
+    except Exception as e:
+        logger.warning(f"Failed to get active nodes: {e}")
+        active_nodes = 0
+    
+    # Count open tasks
+    open_tasks = 0
+    try:
+        tasks_file = os.path.join(data_dir, 'tasks.json')
+        if os.path.exists(tasks_file):
+            with open(tasks_file, 'r') as f:
+                tasks_data = json.load(f)
+                # Count tasks with 'open' or 'claimed' status
+                for task_id, task in tasks_data.get('tasks', {}).items():
+                    if task.get('status') in ['open', 'claimed']:
+                        open_tasks += 1
+    except Exception as e:
+        logger.warning(f"Failed to count open tasks: {e}")
+    
+    elapsed_time = time.time() - start_time
+    
+    # Build response
+    response = jsonify({
+        'status': 'ok',
+        'version': '3.4.0',
+        'timestamp': datetime.utcnow().isoformat(),
+        'response_time_ms': round(elapsed_time * 1000, 2),
+        'services': {
+            'ai': checks['ai_api_key'],
+            'claude': checks['claude_api_key'],
+            'discord': checks['discord_webhook'],
+        },
+        'data_files': checks['data_files_readable'],
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+    })
+    
+    # Warn if response time exceeds 500ms
+    if elapsed_time > 0.5:
+        logger.warning(f"Health check response time exceeded 500ms: {elapsed_time*1000:.2f}ms")
+    
+    return response
+
+
+def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
         'status': 'ok', 
