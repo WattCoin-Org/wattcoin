@@ -1442,6 +1442,13 @@ PAYOUTS_TEMPLATE = """
                                    id="payBtn-{{ payout.pr_number }}">
                                     ⚡ Pay
                                 </button>
+                                <form method="POST" action="{{ url_for('admin.reprocess_payout', pr_number=payout.pr_number) }}"
+                                      onsubmit="return confirm('Queue automatic payment for PR #{{ payout.pr_number }}?')"
+                                      style="display:inline">
+                                    <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition">
+                                        🔄 Auto-Pay
+                                    </button>
+                                </form>
                                 <button onclick="copyWallet('{{ payout.wallet }}', {{ payout.amount }})"
                                    class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded text-sm font-medium transition"
                                    title="Copy wallet for manual payment">
@@ -1449,7 +1456,16 @@ PAYOUTS_TEMPLATE = """
                                 </button>
                             </div>
                             {% elif payout.status == 'pending' and not payout.wallet %}
-                            <span class="text-xs text-red-400">No wallet</span>
+                            <div class="flex gap-2">
+                                <span class="text-xs text-red-400">No wallet</span>
+                                <form method="POST" action="{{ url_for('admin.reprocess_payout', pr_number=payout.pr_number) }}"
+                                      onsubmit="return confirm('Re-extract wallet and queue payment for PR #{{ payout.pr_number }}?')"
+                                      style="display:inline">
+                                    <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition">
+                                        🔄 Retry
+                                    </button>
+                                </form>
+                            </div>
                             {% else %}
                             <span class="text-xs text-gray-500">✓ Complete</span>
                             {% endif %}
