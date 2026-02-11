@@ -52,6 +52,7 @@ INTERNAL_REPO = os.getenv("INTERNAL_REPO", "")
 
 PR_REVIEWS_FILE = f"{DATA_DIR}/pr_reviews.json"
 PR_PAYOUTS_FILE = f"{DATA_DIR}/pr_payouts.json"
+ADMIN_REVIEWS_FILE = f"{DATA_DIR}/bounty_reviews.json"
 REPUTATION_FILE = f"{DATA_DIR}/contributor_reputation.json"
 PR_RATE_LIMITS_FILE = f"{DATA_DIR}/pr_rate_limits.json"
 
@@ -1778,12 +1779,34 @@ def handle_pr_review_trigger(pr_number, action):
 # =============================================================================
 
 def find_pr_review(pr_number):
-    """Find review record for a PR."""
+    """Find review record for a PR. Checks webhook pipeline data first, then admin dashboard."""
+    # Check webhook pipeline data (primary)
     reviews = load_json_data(PR_REVIEWS_FILE, default={"reviews": []})
     
     for review in reversed(reviews["reviews"]):
         if review.get("pr_number") == pr_number:
             return review
+    
+    # Fallback: check admin dashboard data (bounty_reviews.json)
+    admin_data = load_json_data(ADMIN_REVIEWS_FILE, default={"reviews": {}})
+    admin_review = admin_data.get("reviews", {}).get(str(pr_number))
+    
+    if admin_review:
+        # Normalize admin format to match webhook format
+        score = admin_review.get("score", 0)
+        passed = admin_review.get("passed", score >= 9)
+        return {
+            "pr_number": pr_number,
+            "review": {
+                "pass": passed,
+                "score": score,
+                "feedback": admin_review.get("feedback", ""),
+                "concerns": admin_review.get("concerns", []),
+            },
+            "timestamp": admin_review.get("timestamp", ""),
+            "author": admin_review.get("author", ""),
+            "source": "admin_dashboard"
+        }
     
     return None
 
