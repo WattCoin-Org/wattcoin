@@ -766,10 +766,14 @@ DASHBOARD_TEMPLATE = """
         {% endif %}
         
         <!-- Stats -->
-        <div class="grid grid-cols-3 gap-4 mb-8">
+        <div class="grid grid-cols-4 gap-4 mb-4">
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="text-3xl font-bold text-blue-400">{{ stats.open_prs }}</div>
-                <div class="text-gray-500 text-sm">Open PRs</div>
+                <div class="text-gray-500 text-sm">Active PRs</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-3xl font-bold text-gray-500">{{ stats.dismissed }}</div>
+                <div class="text-gray-500 text-sm">Dismissed</div>
             </div>
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="text-3xl font-bold text-green-400">{{ stats.approved }}</div>
@@ -780,6 +784,16 @@ DASHBOARD_TEMPLATE = """
                 <div class="text-gray-500 text-sm">Rejected</div>
             </div>
         </div>
+        {% if stats.dismissed > 0 %}
+        <div class="mb-6 text-sm">
+            {% if show_dismissed %}
+                <a href="{{ url_for('admin.dashboard') }}" class="text-blue-400 hover:text-blue-300">← Hide dismissed PRs</a>
+                <span class="text-gray-600 ml-2">(showing all {{ stats.total_open }} open PRs)</span>
+            {% else %}
+                <a href="{{ url_for('admin.dashboard', show_dismissed='true') }}" class="text-gray-500 hover:text-gray-400">Show {{ stats.dismissed }} dismissed PRs →</a>
+            {% endif %}
+        </div>
+        {% endif %}
         
         <!-- Payment Queue Detail -->
         <div id="queue-detail-section" class="mb-8" style="display:none;">
@@ -1333,6 +1347,12 @@ PR_DETAIL_TEMPLATE = """
                     </button>
                 </form>
                 {% endif %}
+                <form method="POST" action="{{ url_for('admin.dismiss_pr', pr_number=pr.number) }}"
+                      onsubmit="return confirm('Dismiss this PR from your queue? It stays open on GitHub.')">
+                    <button type="submit" class="px-6 py-2 bg-gray-600 hover:bg-gray-700 rounded font-medium transition">
+                        👁️‍🗨️ Dismiss
+                    </button>
+                </form>
             </div>
         </div>
         
@@ -2029,26 +2049,37 @@ def logout():
 @admin_bp.route('/dashboard')
 @login_required
 def dashboard():
-    """Main dashboard - list open PRs."""
+    """Main dashboard - list open PRs (excluding admin-reviewed/dismissed ones)."""
     prs = get_open_prs()
     data = load_data()
     reviews = data.get("reviews", {})
+    dismissed = data.get("dismissed_prs", [])
+    
+    # Filter out dismissed PRs from active queue
+    show_dismissed = request.args.get('show_dismissed', '').lower() == 'true'
+    if not show_dismissed:
+        active_prs = [p for p in prs if p.get("number") not in dismissed]
+    else:
+        active_prs = prs
     
     # Count stats
     approved_count = len([r for r in reviews.values() if r.get("status") == "approved"])
     rejected_count = len([r for r in reviews.values() if r.get("status") == "rejected"])
     
     stats = {
-        "open_prs": len(prs),
+        "open_prs": len(active_prs),
+        "total_open": len(prs),
+        "dismissed": len(prs) - len(active_prs),
         "approved": approved_count,
         "rejected": rejected_count
     }
     
     return render_template_string(DASHBOARD_TEMPLATE, 
-        prs=prs, 
+        prs=active_prs, 
         reviews=reviews,
         stats=stats,
         repo=REPO,
+        show_dismissed=show_dismissed,
         message=request.args.get('message'),
         error=request.args.get('error')
     )
@@ -2074,7 +2105,7 @@ def pr_detail(pr_number):
 @admin_bp.route('/pr/<int:pr_number>/review', methods=['POST'])
 @login_required
 def trigger_review(pr_number):
-    """Trigger AI review for a PR."""
+    """Trigger AI review for a PR. Auto-posts feedback on fail, auto-dismisses from queue."""
     pr = get_pr_detail(pr_number)
     if not pr:
         return redirect(url_for('admin.dashboard', error=f"PR #{pr_number} not found"))
@@ -2087,7 +2118,8 @@ def trigger_review(pr_number):
             "review": result["review"],
             "timestamp": result["timestamp"],
             "pr_title": pr["title"],
-            "author": pr["author"]
+            "author": pr["author"],
+            "admin_reviewed": True
         }
         # Store structured fields if available
         for field in ["score", "passed", "feedback", "concerns", "suggested_changes", 
@@ -2096,10 +2128,69 @@ def trigger_review(pr_number):
                 review_entry[field] = result[field]
         
         data["reviews"][str(pr_number)] = review_entry
+        
+        # Auto-dismiss: track admin-reviewed PRs so they leave the dashboard queue
+        if "dismissed_prs" not in data:
+            data["dismissed_prs"] = []
+        if pr_number not in data["dismissed_prs"]:
+            data["dismissed_prs"].append(pr_number)
+        
         save_data(data)
-        return redirect(url_for('admin.pr_detail', pr_number=pr_number, message="AI review completed"))
+        
+        score = result.get("score", 0)
+        passed = result.get("passed", score >= 9)
+        
+        # If review FAILED: auto-post feedback to GitHub so contributor can fix
+        if not passed:
+            feedback = result.get("feedback", result.get("review", ""))
+            concerns = result.get("concerns", [])
+            suggestions = result.get("suggested_changes", [])
+            
+            comment_body = f"## ⚠️ AI Review — Score: {score}/10 (Needs Improvement)\n\n"
+            comment_body += f"{feedback}\n\n"
+            
+            if concerns:
+                comment_body += "### Concerns\n"
+                for c in concerns:
+                    comment_body += f"- {c}\n"
+                comment_body += "\n"
+            
+            if suggestions:
+                comment_body += "### Suggested Changes\n"
+                for s in suggestions:
+                    comment_body += f"- {s}\n"
+                comment_body += "\n"
+            
+            comment_body += "---\n"
+            comment_body += "*Please address the issues above and push a new commit to re-trigger review.*\n"
+            comment_body += "*— WattCoin Admin Review*"
+            
+            try:
+                comment_url = f"https://api.github.com/repos/{REPO}/issues/{pr_number}/comments"
+                requests.post(comment_url, headers=github_headers(), 
+                            json={"body": comment_body}, timeout=15)
+            except Exception as e:
+                print(f"[ADMIN] Failed to post feedback for PR #{pr_number}: {e}")
+            
+            return redirect(url_for('admin.dashboard', 
+                message=f"PR #{pr_number}: Score {score}/10 — feedback posted to GitHub, dismissed from queue"))
+        else:
+            return redirect(url_for('admin.pr_detail', pr_number=pr_number, 
+                message=f"AI review passed ({score}/10) — ready for approval"))
     else:
         return redirect(url_for('admin.pr_detail', pr_number=pr_number, error=result.get("error", "Review failed")))
+
+@admin_bp.route('/pr/<int:pr_number>/dismiss', methods=['POST'])
+@login_required
+def dismiss_pr(pr_number):
+    """Dismiss a PR from the admin queue without closing it on GitHub."""
+    data = load_data()
+    if "dismissed_prs" not in data:
+        data["dismissed_prs"] = []
+    if pr_number not in data["dismissed_prs"]:
+        data["dismissed_prs"].append(pr_number)
+    save_data(data)
+    return redirect(url_for('admin.dashboard', message=f"PR #{pr_number} dismissed from queue"))
 
 @admin_bp.route('/pr/<int:pr_number>/approve', methods=['POST'])
 @login_required
