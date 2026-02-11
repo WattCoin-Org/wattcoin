@@ -1390,6 +1390,14 @@ PAYOUTS_TEMPLATE = """
         
         <h1 class="text-2xl font-bold text-green-400 mb-6">💰 Payout Queue</h1>
         
+        {% if message %}
+        <div class="bg-green-900/50 border border-green-500 text-green-300 px-4 py-2 rounded mb-6">{{ message }}</div>
+        {% endif %}
+        
+        {% if error %}
+        <div class="bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded mb-6">{{ error }}</div>
+        {% endif %}
+        
         {% if payouts %}
         <div class="bg-gray-800 rounded-lg overflow-hidden">
             <table class="w-full">
@@ -2206,11 +2214,11 @@ def reprocess_payout(pr_number):
     """Re-process payout for a merged PR that missed payment (e.g., wallet gate false positive)."""
     pr = get_pr_detail(pr_number)
     if not pr:
-        return redirect(url_for('admin.dashboard', error=f"PR #{pr_number} not found"))
+        return redirect(url_for('admin.payouts', error=f"PR #{pr_number} not found"))
     
     # Must be merged
     if not pr.get("merged"):
-        return redirect(url_for('admin.pr_detail', pr_number=pr_number, error="PR is not merged — cannot re-process payout"))
+        return redirect(url_for('admin.payouts', error=f"PR #{pr_number} is not merged — cannot re-process payout"))
     
     # Check for existing payment in queue to prevent duplicates
     try:
@@ -2221,8 +2229,8 @@ def reprocess_payout(pr_number):
                 queue = json.load(f)
             for item in queue:
                 if item.get("pr_number") == pr_number:
-                    return redirect(url_for('admin.pr_detail', pr_number=pr_number, 
-                        error=f"Payment already in queue (status: {item.get('status', 'unknown')})"))
+                    return redirect(url_for('admin.payouts', 
+                        error=f"PR #{pr_number}: Payment already in queue (status: {item.get('status', 'unknown')})"))
     except:
         pass  # If we can't check, proceed with caution
     
@@ -2232,8 +2240,8 @@ def reprocess_payout(pr_number):
     wallet, wallet_error = extract_wallet_from_pr_body(pr_body)
     
     if wallet_error:
-        return redirect(url_for('admin.pr_detail', pr_number=pr_number, 
-            error=f"Wallet extraction failed: {wallet_error}"))
+        return redirect(url_for('admin.payouts', 
+            error=f"PR #{pr_number}: Wallet extraction failed: {wallet_error}"))
     
     # Find review (now checks both webhook + admin data stores)
     from api_webhooks import find_pr_review, queue_payment, get_bounty_amount, \
@@ -2261,8 +2269,8 @@ def reprocess_payout(pr_number):
         amount = extract_bounty_amount(pr.get("title", ""), pr_body, pr.get("labels", []))
     
     if not amount or amount == 0:
-        return redirect(url_for('admin.pr_detail', pr_number=pr_number, 
-            error=f"No bounty amount found (referenced issue: {'#' + str(bounty_issue_id) if bounty_issue_id else 'none'})"))
+        return redirect(url_for('admin.payouts', 
+            error=f"PR #{pr_number}: No bounty amount found (referenced issue: {'#' + str(bounty_issue_id) if bounty_issue_id else 'none'})"))
     
     # Queue the payment
     pr_author = pr.get("author", "unknown")
@@ -2297,8 +2305,8 @@ def reprocess_payout(pr_number):
     except:
         pass
     
-    return redirect(url_for('admin.pr_detail', pr_number=pr_number, 
-        message=f"Payment re-processed: {amount:,} WATT queued for {wallet[:8]}..."))
+    return redirect(url_for('admin.payouts', 
+        message=f"PR #{pr_number}: {amount:,} WATT queued for {wallet[:8]}..."))
 
 @admin_bp.route('/payouts')
 @login_required
@@ -2334,7 +2342,9 @@ def payouts():
     return render_template_string(PAYOUTS_TEMPLATE,
         payouts=payout_list,
         repo=REPO,
-        bounty_wallet=BOUNTY_WALLET_ADDRESS
+        bounty_wallet=BOUNTY_WALLET_ADDRESS,
+        message=request.args.get('message'),
+        error=request.args.get('error')
     )
 
 @admin_bp.route('/claims')

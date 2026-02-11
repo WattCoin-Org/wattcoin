@@ -782,7 +782,7 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
     with open(queue_file, 'w') as f:
         json.dump(queue, f, indent=2)
     
-    app.logger.info(f"[QUEUE] Payment queued: PR #{pr_number}, {amount:,} WATT to {wallet[:8]}...")
+    print(f"[QUEUE] Payment queued: PR #{pr_number}, {amount:,} WATT to {wallet[:8]}...")
     
     return True
 
