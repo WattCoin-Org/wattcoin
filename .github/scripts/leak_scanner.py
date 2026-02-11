@@ -88,6 +88,7 @@ SCAN_EXTENSIONS = {
 SCANNER_FILES = {
     '.github/scripts/leak_scanner.py',
     '.github/workflows/leak-scan.yml',
+    'security_scanner.py',
 }
 
 
@@ -414,3 +415,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
