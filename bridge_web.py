@@ -198,14 +198,14 @@ def _startup_payment_check():
 threading.Thread(target=_startup_payment_check, daemon=True).start()
 print("[STARTUP] Payment queue check scheduled (15s delay)", flush=True)
 
-# Periodic WSI payout processing — runs every 5 minutes
+# Periodic WSI payout processing - runs every 5 minutes
 # (Bounty payouts trigger on deploy; WSI queries don't cause deploys)
 WSI_PAYOUT_INTERVAL = int(os.environ.get('WSI_PAYOUT_INTERVAL', '300'))  # seconds, default 5 min
 
 def _periodic_wsi_payout():
     """Process WSI payout queue on a recurring interval."""
     import time
-    time.sleep(60)  # Initial delay — let startup processing finish first
+    time.sleep(60)  # Initial delay - let startup processing finish first
     while True:
         try:
             process_wsi_payout_queue()
@@ -231,6 +231,9 @@ MAX_REQUESTS_PER_URL = 10
 # API Key config
 API_KEYS_FILE = "/app/data/api_keys.json"
 DATA_FILE = "/app/data/bounty_reviews.json"
+
+# Track service start time for uptime calculation (BOUNTY #90)
+SERVICE_START_TIME = time.time()
 API_KEY_RATE_LIMITS = {
     "basic": {"requests_per_hour": 500, "requests_per_url": 50},
     "premium": {"requests_per_hour": 2000, "requests_per_url": 200}
@@ -292,14 +295,14 @@ def _check_api_key_rate_limit(api_key, url, tier):
     """Check rate limit for API key. Returns (allowed, retry_after)."""
     now = time.time()
     limits = API_KEY_RATE_LIMITS.get(tier, API_KEY_RATE_LIMITS["basic"])
-    
+
     # Check per-key rate limit
     key_queue = _rate_limit_api_key[api_key]
     _prune_rate_limit(key_queue, now)
     if len(key_queue) >= limits["requests_per_hour"]:
         retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - key_queue[0]))
         return False, retry_after
-    
+
     # Check per-key per-URL rate limit
     key_url = f"{api_key}:{url}"
     url_queue = _rate_limit_api_key_url[key_url]
@@ -307,7 +310,7 @@ def _check_api_key_rate_limit(api_key, url, tier):
     if len(url_queue) >= limits["requests_per_url"]:
         retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - url_queue[0]))
         return False, retry_after
-    
+
     key_queue.append(now)
     url_queue.append(now)
     return True, None
@@ -480,7 +483,7 @@ Links:
 - Discord: https://discord.gg/K3sWgQKk
 - Twitter: https://x.com/WattCoin2026
 
-Be helpful, concise, and enthusiastic about the project. If you don't know something specific, say so rather than guessing. You are NOT a financial advisor — never give investment advice."""
+Be helpful, concise, and enthusiastic about the project. If you don't know something specific, say so rather than guessing. You are NOT a financial advisor - never give investment advice."""
 
 def query_ai(prompt, history=[]):
     if not ai_client:
@@ -488,7 +491,7 @@ def query_ai(prompt, history=[]):
     messages = [{"role": "system", "content": AI_SYSTEM}]
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
-    
+
     response = ai_client.chat.completions.create(
         model="grok-3",
         messages=messages,
@@ -504,7 +507,7 @@ def query_claude(prompt, history=[]):
         if msg["role"] in ["user", "assistant"]:
             messages.append(msg)
     messages.append({"role": "user", "content": prompt})
-    
+
     response = claude_client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
@@ -522,7 +525,7 @@ HTML_TEMPLATE = """
     <title>WattCoin - AI/Claude Bridge</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0a0a0a; color: #e0e0e0; min-height: 100vh;
             padding: 20px; max-width: 1200px; margin: 0 auto;
@@ -530,14 +533,14 @@ HTML_TEMPLATE = """
         h1 { color: #00ff88; margin-bottom: 10px; font-size: 1.8em; }
         .subtitle { color: #888; margin-bottom: 30px; }
         .input-section { margin-bottom: 30px; }
-        textarea { 
-            width: 100%; padding: 15px; border-radius: 8px; 
+        textarea {
+            width: 100%; padding: 15px; border-radius: 8px;
             background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
             font-size: 16px; resize: vertical; min-height: 100px;
         }
         textarea:focus { outline: none; border-color: #00ff88; }
-        .btn { 
-            padding: 12px 24px; border-radius: 6px; border: none; 
+        .btn {
+            padding: 12px 24px; border-radius: 6px; border: none;
             cursor: pointer; font-size: 14px; font-weight: 600;
             transition: all 0.2s;
         }
@@ -548,8 +551,8 @@ HTML_TEMPLATE = """
         .btn-danger { background: #ff4444; color: #fff; }
         .btn-danger:hover { background: #cc3333; }
         .buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .response-box { 
-            background: #1a1a1a; border-radius: 8px; padding: 20px; 
+        .response-box {
+            background: #1a1a1a; border-radius: 8px; padding: 20px;
             margin-bottom: 20px; border-left: 4px solid #333;
         }
         .response-box.ai { border-left-color: #ff6600; }
@@ -557,8 +560,8 @@ HTML_TEMPLATE = """
         .response-box h3 { margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
         .response-box.ai h3 { color: #ff6600; }
         .response-box.claude h3 { color: #00aaff; }
-        .response-content { 
-            white-space: pre-wrap; line-height: 1.6; 
+        .response-content {
+            white-space: pre-wrap; line-height: 1.6;
             background: #0d0d0d; padding: 15px; border-radius: 4px;
         }
         .history { margin-top: 40px; border-top: 1px solid #333; padding-top: 20px; }
@@ -580,14 +583,14 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="admin-link"><a href="/admin">🔐 Admin Dashboard</a></div>
-    
+
     <h1>⚡ WattCoin Bridge v1.2</h1>
     <p class="subtitle">AI (Strategy) ↔ Claude (Implementation) | Proxy: Active</p>
-    
+
     {% if status %}
     <div class="status {{ status.type }}">{{ status.message }}</div>
     {% endif %}
-    
+
     <div class="input-section">
         <form method="POST" action="/query" id="mainForm">
             <textarea name="prompt" placeholder="Enter your topic or question for the AI collaboration..." required>{{ prompt or '' }}</textarea>
@@ -597,11 +600,11 @@ HTML_TEMPLATE = """
             </div>
         </form>
     </div>
-    
+
     <div class="loading" id="loading">
         <span class="spinner">⚡</span> Processing...
     </div>
-    
+
     {% if ai_response %}
     <div class="response-box ai">
         <h3>🤖 AI (Strategy)</h3>
@@ -629,7 +632,7 @@ HTML_TEMPLATE = """
         </div>
     </div>
     {% endif %}
-    
+
     {% if claude_response %}
     <div class="response-box claude">
         <h3>🧠 CLAUDE (Implementation)</h3>
@@ -642,7 +645,7 @@ HTML_TEMPLATE = """
         </div>
     </div>
     {% endif %}
-    
+
     {% if history %}
     <div class="history">
         <h2>📜 Conversation History</h2>
@@ -664,7 +667,7 @@ HTML_TEMPLATE = """
         {% endfor %}
     </div>
     {% endif %}
-    
+
     <script>
         function showEdit() {
             document.getElementById('editPrompt').style.display = 'block';
@@ -692,7 +695,7 @@ def query():
     prompt = request.form.get('prompt', '')
     history = session.get('history', [])
     ai_history = session.get('ai_history', [])
-    
+
     try:
         ai_response = query_ai(prompt, ai_history)
         session['pending_ai'] = ai_response
@@ -700,10 +703,10 @@ def query():
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": ai_response}
         ]
-        return render_template_string(HTML_TEMPLATE, 
+        return render_template_string(HTML_TEMPLATE,
             prompt=prompt, ai_response=ai_response, history=history)
     except Exception as e:
-        return render_template_string(HTML_TEMPLATE, 
+        return render_template_string(HTML_TEMPLATE,
             history=history, status={'type': 'error', 'message': f'AI error: {str(e)}'})
 
 @app.route('/send-to-claude', methods=['POST'])
@@ -711,22 +714,22 @@ def send_to_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
     custom_prompt = request.form.get('custom_prompt', '')
-    
+
     history = session.get('history', [])
     claude_history = session.get('claude_history', [])
-    
+
     if custom_prompt:
         claude_prompt = custom_prompt
     else:
         claude_prompt = f"AI strategy consultant said:\n\n{ai_response}\n\nRespond with implementation perspective."
-    
+
     try:
         claude_response = query_claude(claude_prompt, claude_history)
         session['claude_history'] = claude_history + [
             {"role": "user", "content": claude_prompt},
             {"role": "assistant", "content": claude_response}
         ]
-        
+
         # Log exchange
         history.append({
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -735,9 +738,9 @@ def send_to_claude():
             'claude': claude_response
         })
         session['history'] = history
-        
+
         return render_template_string(HTML_TEMPLATE,
-            prompt=original_prompt, ai_response=ai_response, 
+            prompt=original_prompt, ai_response=ai_response,
             claude_response=claude_response, history=history)
     except Exception as e:
         return render_template_string(HTML_TEMPLATE,
@@ -748,7 +751,7 @@ def skip_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
     history = session.get('history', [])
-    
+
     history.append({
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'prompt': original_prompt,
@@ -756,7 +759,7 @@ def skip_claude():
         'claude': '[skipped]'
     })
     session['history'] = history
-    
+
     return render_template_string(HTML_TEMPLATE, history=history,
         status={'type': 'success', 'message': 'Skipped Claude, logged AI response.'})
 
@@ -764,10 +767,10 @@ def skip_claude():
 def send_to_ai():
     claude_response = request.form.get('claude_response', '')
     prompt = f"Claude (implementation) responded:\n\n{claude_response}\n\nYour thoughts?"
-    
+
     history = session.get('history', [])
     ai_history = session.get('ai_history', [])
-    
+
     try:
         ai_response = query_ai(prompt, ai_history)
         session['ai_history'] = ai_history + [
@@ -783,7 +786,7 @@ def send_to_ai():
 @app.route('/clear')
 def clear():
     session.clear()
-    return render_template_string(HTML_TEMPLATE, 
+    return render_template_string(HTML_TEMPLATE,
         status={'type': 'success', 'message': 'History cleared.'})
 
 
@@ -795,9 +798,9 @@ def clear():
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
-    
+
     Comprehensive error handling with detailed error codes and messages.
-    
+
     Request:
         {
             "url": "https://example.com",
@@ -805,12 +808,12 @@ def scrape():
             "wallet": "AgentWallet...",      # Required if no API key
             "tx_signature": "..."             # Required if no API key
         }
-    
+
     Headers:
         X-API-Key: <key>  (optional - skips payment if valid)
-    
+
     Pricing: 100 WATT per scrape
-    
+
     Error Codes:
         - missing_url, invalid_url, url_blocked
         - invalid_format
@@ -823,36 +826,36 @@ def scrape():
         - internal_error
     """
     SCRAPE_PRICE_WATT = 100
-    
+
     try:
         # Parse request
         data = request.get_json(silent=True) or {}
         target_url = data.get('url', '').strip()
         output_format = (data.get('format') or 'text').strip().lower()
         client_ip = _get_client_ip()
-        
+
         logger.info("scrape request received | ip=%s url=%.120s format=%s", client_ip, target_url or '<empty>', output_format)
-        
+
         # === INPUT VALIDATION ===
-        
+
         # Validate URL
         is_valid, url_error = validate_url(target_url)
         if not is_valid:
             logger.warning("url validation failed | ip=%s error=%s", client_ip, url_error.error_code.value)
             response, status = url_error.to_response()
             return jsonify(response), status
-        
+
         # Validate format
         is_valid, format_error = validate_format(output_format)
         if not is_valid:
             logger.warning("format validation failed | ip=%s format=%s", client_ip, output_format)
             response, status = format_error.to_response()
             return jsonify(response), status
-        
+
         # Set default format if needed
         if not output_format:
             output_format = 'text'
-        
+
         # Validate URL with security checks
         if not _validate_scrape_url(target_url):
             logger.warning("url blocked by security check | ip=%s url=%.120s", client_ip, target_url)
@@ -863,23 +866,23 @@ def scrape():
             )
             response, status = error.to_response()
             return jsonify(response), status
-        
+
         # === AUTHENTICATION ===
-        
+
         api_key = request.headers.get('X-API-Key', '').strip()
         wallet = data.get('wallet', '').strip()
         tx_signature = data.get('tx_signature', '').strip()
-        
+
         # Validate payment parameters
         is_valid, payment_error = validate_payment_params(api_key, wallet, tx_signature)
         if not is_valid:
             logger.warning("payment validation failed | ip=%s error=%s", client_ip, payment_error.error_code.value)
             response, status = payment_error.to_response()
             return jsonify(response), status
-        
+
         key_data = None
         payment_verified = False
-        
+
         if api_key:
             # API key authentication
             key_data = _validate_api_key(api_key)
@@ -892,7 +895,7 @@ def scrape():
                 )
                 response, status = error.to_response()
                 return jsonify(response), status
-            
+
             # Check rate limit
             tier = key_data.get('tier', 'basic')
             allowed, retry_after = _check_api_key_rate_limit(api_key, target_url, tier)
@@ -906,7 +909,7 @@ def scrape():
                 )
                 response, status = error.to_response()
                 return jsonify(response), status
-            
+
             logger.info("api key authenticated | ip=%s tier=%s", client_ip, tier)
             _increment_api_key_usage(api_key)
             payment_verified = True
@@ -916,7 +919,7 @@ def scrape():
             verified, error_code, error_message = verify_watt_payment(
                 tx_signature, wallet, SCRAPE_PRICE_WATT
             )
-            
+
             if not verified:
                 logger.warning("watt payment failed | ip=%s error_code=%s", client_ip, error_code)
                 # Determine error type
@@ -928,7 +931,7 @@ def scrape():
                     scraper_error_code = ScraperErrorCode.PAYMENT_FAILED
                 else:
                     scraper_error_code = ScraperErrorCode.PAYMENT_FAILED
-                
+
                 error = ScraperError(
                     scraper_error_code,
                     error_message,
@@ -936,11 +939,11 @@ def scrape():
                 )
                 response, status = error.to_response()
                 return jsonify(response), status
-            
+
             logger.info("watt payment verified | ip=%s wallet=%.40s", client_ip, wallet)
             save_used_signature(tx_signature)
             payment_verified = True
-        
+
         # === NODE ROUTING (v2.1.0) ===
         if payment_verified:
             active_nodes = get_active_nodes(capability='scrape')
@@ -952,11 +955,11 @@ def scrape():
                         total_payment=SCRAPE_PRICE_WATT,
                         requester_wallet=wallet or 'api_key_user'
                     )
-                    
+
                     if job_result.get('routed'):
                         job_id = job_result.get('job_id')
                         node_result = wait_for_job_result(job_id, timeout=60)
-                        
+
                         if node_result.get('success'):
                             result = node_result.get('result', {})
                             response_data = {
@@ -979,14 +982,14 @@ def scrape():
                 except Exception:
                     # Node routing error - fall through to centralized
                     pass
-        
+
         # === CENTRALIZED FALLBACK ===
         headers = {
             'User-Agent': random.choice(SCRAPE_USER_AGENTS),
             'Accept': 'text/html,application/json;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9'
         }
-        
+
         # Fetch with redirect handling
         logger.info("fetching url | ip=%s url=%.120s format=%s", client_ip, target_url, output_format)
         try:
@@ -1025,7 +1028,7 @@ def scrape():
             )
             response, status = error.to_response()
             return jsonify(response), status
-        
+
         # Validate HTTP response status
         logger.debug("target responded | ip=%s url=%.120s status=%d", client_ip, target_url, resp.status_code)
         is_valid, http_error = validate_http_status(resp.status_code)
@@ -1033,7 +1036,7 @@ def scrape():
             logger.warning("http error from target | ip=%s url=%.120s status=%d", client_ip, target_url, resp.status_code)
             response, status = http_error.to_response()
             return jsonify(response), status
-        
+
         # Read response content with size validation
         try:
             raw_bytes = _read_limited_content(resp)
@@ -1065,7 +1068,7 @@ def scrape():
             )
             response, status = error.to_response()
             return jsonify(response), status
-        
+
         # Validate content is not empty
         if len(raw_bytes) == 0:
             logger.warning("empty response | ip=%s url=%.120s", client_ip, target_url)
@@ -1076,13 +1079,13 @@ def scrape():
             )
             response, status = error.to_response()
             return jsonify(response), status
-        
+
         # Parse content based on format
         try:
             # Validate and get encoding
             charset = resp.encoding
             is_valid, encoding = validate_encoding(charset)
-            
+
             if output_format == 'html':
                 try:
                     content = raw_bytes.decode(encoding, errors='replace')
@@ -1117,17 +1120,17 @@ def scrape():
             )
             response, status = error.to_response()
             return jsonify(response), status
-        
+
         # Validate content is not empty after parsing
         is_valid, empty_error = validate_content_not_empty(content, output_format)
         if not is_valid:
             response, status = empty_error.to_response()
             return jsonify(response), status
-        
+
         # === SUCCESS ===
         content_len = len(content) if isinstance(content, str) else len(json.dumps(content))
         logger.info("scrape success | ip=%s url=%.120s format=%s status=%d content_len=%d", client_ip, target_url, output_format, resp.status_code, content_len)
-        
+
         response_data = {
             'success': True,
             'url': target_url,
@@ -1136,7 +1139,7 @@ def scrape():
             'status_code': resp.status_code,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         }
-        
+
         # Add payment info
         if tx_signature:
             response_data['tx_verified'] = True
@@ -1144,9 +1147,9 @@ def scrape():
         elif key_data:
             response_data['api_key_used'] = True
             response_data['tier'] = key_data.get('tier', 'basic')
-        
+
         return jsonify(response_data), 200
-        
+
     except ScraperError as e:
         logger.warning("scraper error (caught) | error=%s message=%s", e.error_code.value, e.message)
         response, status = e.to_response()
@@ -1171,76 +1174,76 @@ def scrape():
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
-    
+
     Request:
         {
             "prompt": "What is WattCoin?",
             "wallet": "AgentWallet...",
             "tx_signature": "..."
         }
-    
+
     Pricing: 500 WATT per query
     """
     LLM_PRICE_WATT = 500
-    
+
     try:
         data = request.get_json(silent=True) or {}
         prompt = (data.get('prompt') or '').strip()
         wallet = (data.get('wallet') or '').strip()
         tx_signature = (data.get('tx_signature') or '').strip()
         client_ip = _get_client_ip()
-        
+
         logger.info("llm request | ip=%s wallet=%.40s prompt_len=%d", client_ip, wallet or '<none>', len(prompt))
-        
+
         # Validate prompt
         if not prompt:
             return jsonify({"success": False, "error": "prompt required"}), 400
         if len(prompt) > 4000:
             return jsonify({"success": False, "error": "prompt too long (max 4000 chars)"}), 400
-        
+
         # Validate payment params
         if not wallet or not tx_signature:
             return jsonify({"success": False, "error": "wallet and tx_signature required"}), 400
-        
+
         # Verify WATT payment
         verified, error_code, error_message = verify_watt_payment(
             tx_signature, wallet, LLM_PRICE_WATT
         )
-        
+
         if not verified:
             logger.warning("llm payment failed | ip=%s error=%s", client_ip, error_code)
             return jsonify({"success": False, "error": error_message}), 400
-        
+
         logger.info("llm payment verified | ip=%s wallet=%.40s", client_ip, wallet)
         save_used_signature(tx_signature)
-        
+
         # Query AI with WattBot persona
         if not ai_client:
             return jsonify({"success": False, "error": "AI service unavailable"}), 503
-        
+
         messages = [
             {"role": "system", "content": WATTBOT_SYSTEM},
             {"role": "user", "content": prompt}
         ]
-        
+
         response = ai_client.chat.completions.create(
             model="grok-3",
             messages=messages,
             max_tokens=2048
         )
-        
+
         ai_response = response.choices[0].message.content
         tokens_used = getattr(response.usage, 'total_tokens', 0)
-        
+
         logger.info("llm response | ip=%s tokens=%d", client_ip, tokens_used)
-        
+
         return jsonify({
             "success": True,
             "response": ai_response,
             "tokens_used": tokens_used,
             "watt_charged": LLM_PRICE_WATT
         })
-        
+
     except Exception as e:
         logger.error("llm error | %s", str(e))
         return jsonify({"success": False, "error": "Internal error processing query"}), 500
@@ -1250,7 +1253,7 @@ def llm_query():
 def proxy_request():
     """
     Generic HTTP proxy endpoint - bypasses Claude's egress restrictions.
-    
+
     Request JSON:
     {
         "secret": "your-proxy-secret",
@@ -1262,19 +1265,19 @@ def proxy_request():
     """
     try:
         data = request.get_json()
-        
+
         # Auth check
         if data.get('secret') != PROXY_SECRET:
             return jsonify({'error': 'Invalid secret'}), 401
-        
+
         method = data.get('method', 'GET').upper()
         url = data.get('url')
         headers = data.get('headers', {})
         body = data.get('body')
-        
+
         if not url:
             return jsonify({'error': 'URL required'}), 400
-        
+
         # Make the proxied request
         if method == 'GET':
             resp = requests.get(url, headers=headers, timeout=30)
@@ -1286,18 +1289,18 @@ def proxy_request():
             resp = requests.delete(url, headers=headers, timeout=30)
         else:
             return jsonify({'error': f'Unsupported method: {method}'}), 400
-        
+
         # Return response
         try:
             response_data = resp.json()
         except:
             response_data = resp.text
-        
+
         return jsonify({
             'status_code': resp.status_code,
             'response': response_data
         }), 200
-        
+
     except requests.Timeout:
         return jsonify({'error': 'Request timeout'}), 504
     except requests.RequestException as e:
@@ -1310,7 +1313,7 @@ def proxy_request():
 def proxy_moltbook():
     """
     Convenience endpoint specifically for Moltbook API calls.
-    
+
     Request JSON:
     {
         "secret": "your-proxy-secret",
@@ -1322,28 +1325,28 @@ def proxy_moltbook():
     """
     try:
         data = request.get_json()
-        
+
         # Auth check
         if data.get('secret') != PROXY_SECRET:
             return jsonify({'error': 'Invalid secret'}), 401
-        
+
         endpoint = data.get('endpoint', '')
         method = data.get('method', 'GET').upper()
         api_key = data.get('api_key')
         body = data.get('body')
-        
+
         if not endpoint:
             return jsonify({'error': 'Endpoint required'}), 400
         if not api_key:
             return jsonify({'error': 'Moltbook API key required'}), 400
-        
+
         # Build Moltbook URL (always use www)
         url = f"https://www.moltbook.com/api/v1{endpoint}"
         headers = {
             'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json'
         }
-        
+
         # Make request
         if method == 'GET':
             resp = requests.get(url, headers=headers, timeout=30)
@@ -1351,33 +1354,58 @@ def proxy_moltbook():
             resp = requests.post(url, headers=headers, json=body, timeout=30)
         else:
             return jsonify({'error': f'Unsupported method: {method}'}), 400
-        
+
         try:
             response_data = resp.json()
         except:
             response_data = resp.text
-        
+
         return jsonify({
             'status_code': resp.status_code,
             'response': response_data
         }), 200
-        
+
     except Exception as e:
         return jsonify({'error': f'Moltbook proxy error: {str(e)}'}), 500
 
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
+    """Extended health check endpoint for BOUNTY #90.
+    Checks: data files, Discord config, AI API keys.
+    Returns 200 if healthy, 503 if degraded.
+    """
+    uptime_seconds = int(time.time() - SERVICE_START_TIME)
+    try:
+        active_nodes = len(get_active_nodes())
+    except Exception:
+        active_nodes = 0
+    open_tasks = 0
+    try:
+        if os.path.exists(DATA_FILE) and os.access(DATA_FILE, os.R_OK):
+            with open(DATA_FILE, 'r') as f:
+                data = json.load(f)
+                tasks = data.get('tasks', [])
+                open_tasks = sum(1 for t in tasks if isinstance(t, dict) and t.get('status', '').lower() in ('open', 'pending', 'active'))
+    except Exception:
+        pass
+    services = {}
+    services['database'] = 'ok' if (os.path.exists(DATA_FILE) and os.access(DATA_FILE, os.R_OK)) else 'degraded'
+    services['discord'] = 'ok' if bool(os.environ.get('DISCORD_WEBHOOK_URL', '').strip()) else 'degraded'
+    ai_configured = bool(os.environ.get('GEMINI_KEY', '').strip() or os.environ.get('AI_API_KEY', '').strip() or os.environ.get('ANTHROPIC_KEY', '').strip())
+    services['ai_api'] = 'ok' if ai_configured else 'degraded'
+    degraded_services = [s for s in ['database', 'discord', 'ai_api'] if services.get(s) != 'ok']
+    overall_status = 'healthy' if not degraded_services else 'degraded'
+    http_code = 200 if overall_status == 'healthy' else 503
     return jsonify({
-        'status': 'ok', 
+        'status': overall_status,
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': uptime_seconds,
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
+    }), http_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
@@ -1422,32 +1450,32 @@ def unified_pricing():
 def bounty_stats():
     """
     Public bounty statistics for website.
-    
+
     Returns live stats on paid and pending bounties.
     """
     try:
         data = load_bounty_data()
         payouts = data.get("payouts", [])
-        
+
         # Filter paid vs pending
         paid = [p for p in payouts if p.get("status") == "paid"]
         pending = [p for p in payouts if p.get("status") != "paid"]
-        
+
         # Calculate totals
         total_paid_watt = sum(p.get("amount", 0) for p in paid)
         total_pending_watt = sum(p.get("amount", 0) for p in pending)
-        
+
         # Average bounty
         all_amounts = [p.get("amount", 0) for p in payouts if p.get("amount", 0) > 0]
         avg_bounty = sum(all_amounts) // len(all_amounts) if all_amounts else 0
-        
+
         # Recent payouts (last 10, most recent first)
         recent = sorted(
             [p for p in paid if p.get("paid_at")],
             key=lambda x: x.get("paid_at", ""),
             reverse=True
         )[:10]
-        
+
         # Format recent for public display
         recent_formatted = []
         for p in recent:
@@ -1458,7 +1486,7 @@ def bounty_stats():
                 "paid_at": p.get("paid_at"),
                 "tx_sig": p.get("tx_signature", p.get("tx_sig", ""))
             })
-        
+
         # Contributor leaderboard (aggregate by author)
         contributor_totals = {}
         for p in paid:
@@ -1467,13 +1495,13 @@ def bounty_stats():
                 contributor_totals[author] = {"total_earned": 0, "pr_count": 0}
             contributor_totals[author]["total_earned"] += p.get("amount", 0)
             contributor_totals[author]["pr_count"] += 1
-        
+
         leaderboard = sorted(
             [{"username": k, **v} for k, v in contributor_totals.items()],
             key=lambda x: x["total_earned"],
             reverse=True
         )
-        
+
         return jsonify({
             "success": True,
             "total_paid_count": len(paid),
@@ -1485,7 +1513,7 @@ def bounty_stats():
             "leaderboard": leaderboard,
             "updated_at": datetime.now().isoformat() + "Z"
         })
-        
+
     except Exception as e:
         logger.error(f"Bounty stats error: {e}")
         return jsonify({
