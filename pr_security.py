@@ -102,16 +102,20 @@ def validate_solana_address(address):
 def extract_wallet_from_pr_body(pr_body):
     """
     Extract wallet address from PR body.
-    Expected format: **Payout Wallet**: [address]
+    Expected format: **Payout Wallet**: [address] (and common variations)
     Returns: (wallet_address or None, error_message or None)
     """
     if not pr_body:
         return None, "PR body is empty"
     
-    # Look for wallet address in multiple formats
+    # Look for wallet address in multiple formats (ordered specific → general)
     patterns = [
-        r'\*\*Payout Wallet\*\*:\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',   # **Payout Wallet**: addr
-        r'(?:Payout\s+)?Wallet:\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',    # Wallet: addr or Payout Wallet: addr
+        r'\*\*Payout Wallet\*\*:\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',           # **Payout Wallet**: addr
+        r'\*\*Payout Wallet\s*\([^)]*\)\*?\*?:?\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',  # **Payout Wallet (Solana):** addr
+        r'\*\*Payout Wallet\s*(?:\([^)]*\)\s*)?:\s*\*?\*?\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',  # **Payout Wallet (X):** addr (colon before bold close)
+        r'\*\*Wallet\*\*:\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',                   # **Wallet**: addr
+        r'(?:Payout\s+)?Wallet:\s*`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',             # Wallet: addr or Payout Wallet: addr
+        r'[Ww]allet[^\n]{0,30}?`?([1-9A-HJ-NP-Za-km-z]{32,44})`?',               # Flexible: wallet + anything on same line + address
     ]
     match = None
     for pattern in patterns:
