@@ -858,6 +858,11 @@ DASHBOARD_TEMPLATE = """
                            class="px-4 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
                             View
                         </a>
+                        <form method="POST" action="{{ url_for('admin.dismiss_pr', pr_number=pr.number) }}" class="inline">
+                            <button type="submit" class="px-4 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm transition">
+                                Dismiss
+                            </button>
+                        </form>
                         <form method="POST" action="{{ url_for('admin.close_pr_route', pr_number=pr.number) }}" 
                               onsubmit="return confirm('Close PR #{{ pr.number }}?')" class="inline">
                             <button type="submit" class="px-4 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition">
