@@ -264,9 +264,9 @@ def replay_batch():
         if not pr_numbers or not isinstance(pr_numbers, list):
             return jsonify({"error": "pr_numbers must be a non-empty list"}), 400
         
-        # Cap at 20 PRs
-        if len(pr_numbers) > 20:
-            return jsonify({"error": "Maximum 20 PRs per batch"}), 400
+        # Cap at 10 PRs
+        if len(pr_numbers) > 10:
+            return jsonify({"error": "Maximum 10 PRs per batch"}), 400
         
         repo = data.get("repo")
         store = data.get("store", False)
@@ -290,47 +290,59 @@ def replay_batch():
                 failed += 1
                 continue
             
-            # Rate limit: 2 second pause between PRs (except first)
+            # Rate limit: 5 second pause between PRs (except first)
             if idx > 0:
-                time.sleep(2)
+                time.sleep(5)
             
             print(f"[EVAL-REPLAY] Processing PR #{pr_number} ({idx+1}/{len(pr_numbers)})...", flush=True)
             
-            result, error = replay_pr_evaluation(pr_number, repo=repo, store=store)
-            
-            if error:
+            # Wrap in try/except to isolate per-PR failures
+            try:
+                result, error = replay_pr_evaluation(pr_number, repo=repo, store=store)
+                
+                if error:
+                    results.append({
+                        "pr_number": pr_number,
+                        "status": "error",
+                        "error": error,
+                    })
+                    failed += 1
+                else:
+                    # Extract summary for batch response
+                    review_score = None
+                    review_passed = None
+                    if result.get("review") and not result["review"].get("error"):
+                        review_score = result["review"].get("score")
+                        review_passed = result["review"].get("passed")
+                    
+                    security_verdict = "UNKNOWN"
+                    if result.get("security"):
+                        if result["security"].get("passed"):
+                            security_verdict = "PASS"
+                        elif result["security"].get("scan_ran"):
+                            security_verdict = "FAIL"
+                        else:
+                            security_verdict = "UNAVAILABLE"
+                    
+                    results.append({
+                        "pr_number": pr_number,
+                        "status": "ok",
+                        "review_score": review_score,
+                        "review_passed": review_passed,
+                        "security_verdict": security_verdict,
+                        "stored": result.get("stored", False),
+                    })
+                    succeeded += 1
+                    
+            except Exception as e:
+                # Catch any unhandled exceptions from replay_pr_evaluation
+                print(f"[EVAL-REPLAY] Unhandled exception for PR #{pr_number}: {e}", flush=True)
                 results.append({
                     "pr_number": pr_number,
                     "status": "error",
-                    "error": error,
+                    "error": f"Unexpected error: {str(e)}",
                 })
                 failed += 1
-            else:
-                # Extract summary for batch response
-                review_score = None
-                review_passed = None
-                if result.get("review") and not result["review"].get("error"):
-                    review_score = result["review"].get("score")
-                    review_passed = result["review"].get("passed")
-                
-                security_verdict = "UNKNOWN"
-                if result.get("security"):
-                    if result["security"].get("passed"):
-                        security_verdict = "PASS"
-                    elif result["security"].get("scan_ran"):
-                        security_verdict = "FAIL"
-                    else:
-                        security_verdict = "UNAVAILABLE"
-                
-                results.append({
-                    "pr_number": pr_number,
-                    "status": "ok",
-                    "review_score": review_score,
-                    "review_passed": review_passed,
-                    "security_verdict": security_verdict,
-                    "stored": result.get("stored", False),
-                })
-                succeeded += 1
         
         print(f"[EVAL-REPLAY] Batch complete: {succeeded} ok, {failed} failed", flush=True)
         
@@ -419,3 +431,4 @@ def annotate_evaluation():
         
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
+
