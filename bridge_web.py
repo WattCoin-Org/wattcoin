@@ -95,7 +95,7 @@ from flask_limiter.util import get_remote_address
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    default_limits=[os.getenv("RATE_LIMIT_DEFAULT", "60 per minute")],  # Default 60/min as per #88
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -106,13 +106,27 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    
+    # Get retry-after from the exception if available
+    retry_after = "60 seconds"
+    if hasattr(e, "description") and "retry after" in e.description.lower():
+        retry_after = e.description
+    elif hasattr(e, "headers") and "Retry-After" in e.headers:
+        retry_after = f"{e.headers['Retry-After']} seconds"
+
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after
+    })
+    
+    # Ensure Retry-After header is present in response
+    if hasattr(e, "headers") and "Retry-After" in e.headers:
+        response.headers["Retry-After"] = e.headers["Retry-After"]
+        
+    return response, 429
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info(f"Flask-Limiter initialized with default limit: {os.getenv('RATE_LIMIT_DEFAULT', '60 per minute')}")
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -822,6 +836,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(os.getenv("RATE_LIMIT_SCRAPE", "60 per minute"))
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1198,6 +1213,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit(os.getenv("RATE_LIMIT_LLM", "60 per minute"))
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1277,6 +1293,7 @@ def llm_query():
 
 
 @app.route('/proxy', methods=['POST'])
+@limiter.limit(os.getenv("RATE_LIMIT_PROXY", "60 per minute"))
 def proxy_request():
     """
     Generic HTTP proxy endpoint - bypasses Claude's egress restrictions.
@@ -1337,6 +1354,7 @@ def proxy_request():
 
 
 @app.route('/proxy/moltbook', methods=['POST'])
+@limiter.limit(os.getenv("RATE_LIMIT_PROXY", "60 per minute"))
 def proxy_moltbook():
     """
     Convenience endpoint specifically for Moltbook API calls.
@@ -1411,6 +1429,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(os.getenv("RATE_LIMIT_PUBLIC", "60 per minute"))
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1449,6 +1468,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(os.getenv("RATE_LIMIT_PUBLIC", "60 per minute"))
 def bounty_stats():
     """
     Public bounty statistics for website.
