@@ -123,8 +123,10 @@ from admin_blueprint import admin_bp
 from api_bounties import bounties_bp
 from api_llm import llm_bp, verify_watt_payment, save_used_signature
 from api_reputation import reputation_bp
-from api_tasks import tasks_bp
+from api_tasks import tasks_bp, load_tasks
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
+
+START_TIME = time.time()
 from api_pr_review import pr_review_bp
 from api_webhooks import webhooks_bp, process_payment_queue, load_reputation_data
 from api_wsi import wsi_bp
@@ -1349,15 +1351,39 @@ def proxy_moltbook():
 @app.route('/health')
 def health():
     active_nodes = len(get_active_nodes())
+    tasks_data = load_tasks()
+    open_tasks = len([t for t in tasks_data.get('tasks', {}).values() if t.get('status') == 'open'])
+    
+    # Check data files readable (Critical)
+    database_ok = True
+    try:
+        load_tasks()
+    except:
+        database_ok = False
+        
+    # Check AI API Key (Critical)
+    ai_api_ok = bool(os.getenv("AI_API_KEY"))
+    
+    # Check Discord Webhook (Non-critical)
+    discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL"))
+
+    status_code = 200
+    if not database_ok or not ai_api_ok:
+        status_code = 503
+
     return jsonify({
-        'status': 'ok', 
+        'status': 'healthy' if status_code == 200 else 'degraded', 
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'uptime_seconds': int(time.time() - START_TIME),
+        'services': {
+            'database': 'ok' if database_ok else 'error',
+            'discord': 'ok' if discord_ok else 'not_configured',
+            'ai_api': 'ok' if ai_api_ok else 'missing'
+        },
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
