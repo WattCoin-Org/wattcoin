@@ -1,11 +1,16 @@
 # WattCoin (WATT)
 
-**Utility token on Solana for AI agent automation**
+[![Status](https://img.shields.io/badge/status-active-2ea043?style=flat-square)](https://github.com/WattCoin-Org/wattcoin)
+[![License](https://img.shields.io/github/license/WattCoin-Org/wattcoin?style=flat-square)](https://github.com/WattCoin-Org/wattcoin/blob/main/LICENSE)
+[![Solana](https://img.shields.io/badge/solana-mainnet-9945FF?logo=solana&logoColor=white&style=flat-square)](https://solana.com)
+[![Token Standard](https://img.shields.io/badge/token-Token--2022-14F195?style=flat-square)](https://spl.solana.com/token-2022)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
+[![Open Bounties](https://img.shields.io/github/issues/WattCoin-Org/wattcoin/bounty?style=flat-square&label=open%20bounties)](https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aissue%20state%3Aopen%20label%3Abounty)
+[![Contributors](https://img.shields.io/github/contributors/WattCoin-Org/wattcoin?style=flat-square)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.gg/K3sWgQKk)
+[![Website](https://img.shields.io/badge/website-wattcoin.org-0ea5e9?style=flat-square)](https://wattcoin.org)
 
-[![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
-[![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
-[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+**Utility token on Solana for AI agent automation**
 
 ## 🚀 Token Info
 
@@ -175,4 +180,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 > **Merit System Active** — Contributors earn reputation through quality PRs. Check your tier: `/api/v1/reputation/<github-username>`
-
