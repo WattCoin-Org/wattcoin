@@ -1431,6 +1431,7 @@ PAYOUTS_TEMPLATE = """
                         <td class="px-4 py-3">
                             <span id="status-{{ payout.pr_number }}" class="px-2 py-1 rounded text-xs 
                                 {% if payout.status == 'pending' %}bg-yellow-900/50 text-yellow-400
+                                {% elif payout.status == 'queued' %}bg-blue-900/50 text-blue-400
                                 {% elif payout.status == 'paid' %}bg-green-900/50 text-green-400
                                 {% endif %}">
                                 {{ payout.status }}
@@ -2338,6 +2339,33 @@ def payouts():
     # Save if we backfilled anything
     if updated:
         save_data(data)
+    
+    # Cross-reference payment_queue.json for actual payment status
+    try:
+        queue_file = "/app/data/payment_queue.json"
+        if os.path.exists(queue_file):
+            with open(queue_file, 'r') as f:
+                payment_queue = json.load(f)
+            # Build lookup by PR number
+            queue_lookup = {}
+            for item in payment_queue:
+                pr_num = item.get("pr_number")
+                if pr_num:
+                    queue_lookup[pr_num] = item
+            
+            # Sync status from payment queue into admin payout list
+            for payout in payout_list:
+                pr_num = payout.get("pr_number")
+                if pr_num in queue_lookup:
+                    q_item = queue_lookup[pr_num]
+                    q_status = q_item.get("status", "")
+                    if q_status in ("completed", "paid", "sent"):
+                        payout["status"] = "paid"
+                        payout["tx_sig"] = q_item.get("tx_signature") or q_item.get("tx_sig") or payout.get("tx_sig")
+                    elif q_status == "pending":
+                        payout["status"] = "queued"
+    except Exception as e:
+        print(f"[PAYOUTS] Error cross-referencing payment queue: {e}")
     
     return render_template_string(PAYOUTS_TEMPLATE,
         payouts=payout_list,
