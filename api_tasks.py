@@ -1,7 +1,8 @@
 """
-Agent Task Marketplace — v2.0.0
+Agent Task Marketplace — v2.1.0
 Standalone Flask blueprint for agent-to-agent task coordination with delegation.
 Any AI agent with an HTTP client and Solana wallet can participate.
+Ban checks and rate limiting via pr_security unified system.
 
 Endpoints:
     POST   /api/v1/tasks              — Create a task (escrow WATT upfront)
@@ -26,6 +27,8 @@ import logging
 import time
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
+
+from pr_security import is_banned, check_task_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +419,15 @@ def create_task():
     if not tx_signature:
         return jsonify({"success": False, "error": "tx_signature required (escrow payment)"}), 400
 
+    # === Ban Check ===
+    if is_banned(wallet):
+        return jsonify({"success": False, "error": "Account is restricted from task marketplace"}), 403
+
+    # === Rate Limit ===
+    allowed, limit_msg = check_task_rate_limit(wallet, "create")
+    if not allowed:
+        return jsonify({"success": False, "error": limit_msg}), 429
+
     reward = int(reward)
 
     # === Verify Escrow Payment ===
@@ -585,6 +597,15 @@ def claim_task(task_id):
     if not wallet:
         return jsonify({"success": False, "error": "wallet required"}), 400
 
+    # === Ban Check ===
+    if is_banned(wallet):
+        return jsonify({"success": False, "error": "Account is restricted from task marketplace"}), 403
+
+    # === Rate Limit ===
+    allowed, limit_msg = check_task_rate_limit(wallet, "claim")
+    if not allowed:
+        return jsonify({"success": False, "error": limit_msg}), 429
+
     data = load_tasks()
     
     # Expire stale claims first
@@ -651,6 +672,15 @@ def submit_task(task_id):
     if len(result) > 10000:
         return jsonify({"success": False, "error": "result too long (max 10000 chars)"}), 400
 
+    # === Ban Check ===
+    if is_banned(wallet):
+        return jsonify({"success": False, "error": "Account is restricted from task marketplace"}), 403
+
+    # === Rate Limit ===
+    allowed, limit_msg = check_task_rate_limit(wallet, "submit")
+    if not allowed:
+        return jsonify({"success": False, "error": limit_msg}), 429
+
     data = load_tasks()
     task = data.get("tasks", {}).get(task_id)
 
@@ -702,6 +732,14 @@ def verify_task(task_id):
         return jsonify({"success": False, "error": "task not found"}), 404
     if task.get("status") != "submitted":
         return jsonify({"success": False, "error": f"task is {task.get('status')}, not submitted"}), 409
+
+    # === Ban Check on claimer — no payouts to banned accounts ===
+    claimer_wallet = task.get("claimer_wallet", "")
+    if is_banned(claimer_wallet):
+        task["status"] = "rejected"
+        task["rejection_reason"] = "Claimer account is restricted"
+        save_tasks(data)
+        return jsonify({"success": False, "error": "Claimer account is restricted"}), 403
 
     # Run AI verification (with retries). If AI is unavailable, mark as pending_review
     # so we don't accidentally re-open/lose the submission.
@@ -913,6 +951,10 @@ def delegate_task(task_id):
         return jsonify({"success": False, "error": f"max {MAX_SUBTASKS} subtasks per delegation"}), 400
     if len(subtasks_input) < 2:
         return jsonify({"success": False, "error": "need at least 2 subtasks to delegate"}), 400
+
+    # === Ban Check ===
+    if is_banned(wallet):
+        return jsonify({"success": False, "error": "Account is restricted from task marketplace"}), 403
 
     data = load_tasks()
     parent = data.get("tasks", {}).get(task_id)

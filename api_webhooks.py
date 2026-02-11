@@ -35,7 +35,12 @@ from pr_security import (
     load_json_data,
     save_json_data,
     DATA_DIR,
-    REQUIRE_DOUBLE_APPROVAL
+    REQUIRE_DOUBLE_APPROVAL,
+    load_banned_users,
+    save_banned_users,
+    is_banned,
+    add_ban,
+    SYSTEM_ACCOUNTS,
 )
 
 webhooks_bp = Blueprint('webhooks', __name__)
@@ -241,7 +246,6 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
     Events: 'merge', 'reject', 'revert'
     """
     # Skip system/org/internal accounts
-    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         print(f"[REPUTATION] Skipping system account: {github_username}", flush=True)
         return {"github": github_username, "score": 0, "tier": "system"}
@@ -867,26 +871,7 @@ def record_review(pr_number):
     save_pr_rate_limits(limits)
 
 
-def load_banned_users():
-    """Load banned users list from data file + hardcoded permanent bans."""
-    # Hardcoded permanent bans (cannot be bypassed by data file deletion)
-    PERMANENT_BANS = {"ohmygod20260203", "eugenejarvis88", "krit22", "kastertrooy", "johndetmers-ui"}
-    
-    banned_file = os.path.join(DATA_DIR, "banned_users.json")
-    try:
-        with open(banned_file, 'r') as f:
-            data = json.load(f)
-            file_bans = {u.lower() for u in data.get("banned", [])}
-            return PERMANENT_BANS | file_bans
-    except (FileNotFoundError, json.JSONDecodeError):
-        return PERMANENT_BANS
-
-def save_banned_users(banned_set):
-    """Save banned users list to data file."""
-    banned_file = os.path.join(DATA_DIR, "banned_users.json")
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(banned_file, 'w') as f:
-        json.dump({"banned": sorted(banned_set), "updated": datetime.utcnow().isoformat() + "Z"}, f, indent=2)
+# load_banned_users, save_banned_users, is_banned, add_ban — imported from pr_security
 
 
 # =============================================================================
@@ -901,7 +886,6 @@ AUTO_BAN_SECURITY_FLAGS = int(os.environ.get("AUTO_BAN_SECURITY_FLAGS", "2"))
 
 def record_failed_review(github_username, pr_number, score):
     """Record a failed AI review (score < threshold) in contributor reputation data."""
-    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         return
     
@@ -952,7 +936,6 @@ def record_failed_review(github_username, pr_number, score):
 
 def record_security_flag(github_username, pr_number, flag_types):
     """Record a content security flag in contributor reputation data."""
-    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         return
     
@@ -1013,7 +996,6 @@ def check_auto_ban(github_username):
     - 5 failed reviews (score < 5) regardless of merges → auto-ban
     """
     # Never auto-ban system accounts
-    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         return False, "System account"
     
@@ -1046,7 +1028,6 @@ def check_auto_ban_security(github_username):
     - 2 security flags with 0 merges → auto-ban
     """
     # Never auto-ban system accounts
-    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
     if github_username.lower() in SYSTEM_ACCOUNTS:
         return False, "System account"
     
@@ -1436,7 +1417,6 @@ def handle_pr_review_trigger(pr_number, action):
         pr_body = ""
     
     # === SYSTEM ACCOUNT BYPASS ===
-    SYSTEM_ACCOUNTS = {"wattcoin-org"}
     if pr_author.lower() in SYSTEM_ACCOUNTS:
         print(f"[SYSTEM] PR #{pr_number} from system account @{pr_author} — skipping all gates", flush=True)
         return jsonify({"message": "System account — gates bypassed", "author": pr_author}), 200

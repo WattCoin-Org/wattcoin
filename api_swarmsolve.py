@@ -42,7 +42,7 @@ from solders.keypair import Keypair
 from spl.token.instructions import get_associated_token_address
 from spl.token.constants import TOKEN_2022_PROGRAM_ID
 
-from pr_security import load_json_data, save_json_data
+from pr_security import load_json_data, save_json_data, is_banned
 
 # =============================================================================
 # CONFIGURATION
@@ -1261,9 +1261,8 @@ def claim_solution(solution_id):
                 "max_active_claims": MAX_ACTIVE_CLAIMS_PER_AGENT
             }), 400
 
-        # Check ban list
-        banned_users = load_json_data("/app/data/banned_users.json", default={"banned": []})
-        if github_user in banned_users.get("banned", []):
+        # Check ban list (unified — includes PERMANENT_BANS + banned_users.json)
+        if is_banned(github_user):
             return jsonify({"error": "Account is restricted from SwarmSolve"}), 403
 
         # Verify GitHub account trust

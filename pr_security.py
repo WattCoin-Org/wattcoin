@@ -1,6 +1,7 @@
 """
-WattCoin PR Security Module
-Handles validation, rate limiting, and code scanning for PR bounty system
+WattCoin PR Security Module v1.1.0
+Handles validation, rate limiting, code scanning, and unified ban system.
+Used by: api_webhooks.py, api_swarmsolve.py, api_tasks.py
 """
 
 import os
@@ -46,6 +47,132 @@ DANGEROUS_PATTERNS = [
     r'DROP TABLE',
     r'DELETE FROM',
 ]
+
+# =============================================================================
+# UNIFIED BAN SYSTEM (v1.1.0)
+# Single source of truth for all ban checks across PR, SwarmSolve, and Tasks.
+# Combines hardcoded PERMANENT_BANS + dynamic banned_users.json.
+# =============================================================================
+
+BANNED_USERS_FILE = f"{DATA_DIR}/banned_users.json"
+
+# Hardcoded permanent bans — cannot be bypassed by data file deletion
+PERMANENT_BANS = {"ohmygod20260203", "eugenejarvis88", "krit22", "kastertrooy", "johndetmers-ui"}
+
+# System accounts excluded from ban checks and auto-ban
+SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+
+
+def load_banned_users():
+    """Load full banned users set: PERMANENT_BANS + banned_users.json."""
+    try:
+        with open(BANNED_USERS_FILE, 'r') as f:
+            data = json.load(f)
+            file_bans = {u.lower() for u in data.get("banned", [])}
+            return PERMANENT_BANS | file_bans
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set(PERMANENT_BANS)
+
+
+def save_banned_users(banned_set):
+    """Save banned users list to data file."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(BANNED_USERS_FILE, 'w') as f:
+        json.dump({
+            "banned": sorted(banned_set),
+            "updated": datetime.utcnow().isoformat() + "Z"
+        }, f, indent=2)
+
+
+def is_banned(identifier):
+    """
+    Check if a GitHub username OR wallet address is banned.
+    Case-insensitive for usernames.
+    
+    Args:
+        identifier: GitHub username or wallet address
+    
+    Returns:
+        bool: True if banned
+    """
+    if not identifier:
+        return False
+    banned = load_banned_users()
+    return identifier.lower() in banned
+
+
+def add_ban(identifier):
+    """
+    Add identifier to ban list and persist.
+    
+    Args:
+        identifier: GitHub username or wallet to ban
+    
+    Returns:
+        bool: True if newly added, False if already banned
+    """
+    banned = load_banned_users()
+    normalized = identifier.lower()
+    if normalized in banned:
+        return False
+    banned.add(normalized)
+    save_banned_users(banned)
+    log_security_event("ban_added", {"identifier": normalized})
+    return True
+
+
+# =============================================================================
+# TASK RATE LIMITING (v1.1.0)
+# Prevents spam on task marketplace endpoints.
+# =============================================================================
+
+TASK_RATE_LIMIT_FILE = f"{DATA_DIR}/task_rate_limits.json"
+TASK_CLAIMS_PER_HOUR = int(os.getenv("TASK_CLAIMS_PER_HOUR", "10"))
+TASK_SUBMISSIONS_PER_HOUR = int(os.getenv("TASK_SUBMISSIONS_PER_HOUR", "10"))
+TASK_CREATES_PER_HOUR = int(os.getenv("TASK_CREATES_PER_HOUR", "5"))
+
+
+def check_task_rate_limit(wallet, action="claim"):
+    """
+    Check if wallet has exceeded task rate limits.
+    
+    Args:
+        wallet: Solana wallet address
+        action: "claim", "submit", or "create"
+    
+    Returns:
+        (allowed: bool, message: str)
+    """
+    limits = {
+        "claim": TASK_CLAIMS_PER_HOUR,
+        "submit": TASK_SUBMISSIONS_PER_HOUR,
+        "create": TASK_CREATES_PER_HOUR,
+    }
+    max_per_hour = limits.get(action, 10)
+    
+    data = load_json_data(TASK_RATE_LIMIT_FILE, default={})
+    now = time.time()
+    cutoff = now - 3600  # 1 hour window
+    
+    key = f"{wallet}:{action}"
+    timestamps = [t for t in data.get(key, []) if t > cutoff]
+    
+    if len(timestamps) >= max_per_hour:
+        return False, f"Rate limit exceeded: max {max_per_hour} {action}s per hour"
+    
+    # Record this action
+    timestamps.append(now)
+    data[key] = timestamps
+    
+    # Cleanup old entries across all keys
+    cleaned = {}
+    for k, v in data.items():
+        filtered = [t for t in v if t > cutoff]
+        if filtered:
+            cleaned[k] = filtered
+    
+    save_json_data(TASK_RATE_LIMIT_FILE, cleaned)
+    return True, "ok"
 
 # =============================================================================
 # DATA HELPERS
@@ -526,5 +653,6 @@ def verify_github_signature(payload_body, signature_header, secret):
     calculated_signature = mac.hexdigest()
     
     return hmac.compare_digest(calculated_signature, expected_signature)
+
 
 
