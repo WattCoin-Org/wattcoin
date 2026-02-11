@@ -1398,17 +1398,119 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
+    """
+    Enhanced health check endpoint with comprehensive service status.
+    Bounty: https://github.com/WattCoin-Org/wattcoin/issues/90
+    """
+    import time
+    start_time = time.time()
+    
+    checks = {}
+    overall_status = 'healthy'
+    
+    # Check 1: Data files readable
+    try:
+        data_files = ['nodes.json', 'tasks.json', 'bounties.json']
+        data_status = {}
+        for file_name in data_files:
+            file_path = os.path.join(DATA_DIR, file_name) if 'DATA_DIR' in globals() else file_name
+            if os.path.exists(file_path) and os.access(file_path, os.R_OK):
+                data_status[file_name] = 'accessible'
+            else:
+                data_status[file_name] = 'missing_or_unreadable'
+                overall_status = 'degraded'
+        
+        all_accessible = all(s == 'accessible' for s in data_status.values())
+        checks['data_files'] = {
+            'status': 'healthy' if all_accessible else 'degraded',
+            'details': data_status
+        }
+    except Exception as e:
+        checks['data_files'] = {'status': 'unhealthy', 'error': str(e)}
+        overall_status = 'degraded'
+    
+    # Check 2: Discord webhook configured
+    try:
+        discord_webhook = os.getenv('DISCORD_WEBHOOK_URL', '')
+        if discord_webhook and discord_webhook.startswith('https://discord.com/api/webhooks/'):
+            checks['discord_webhook'] = {'status': 'healthy', 'configured': True}
+        else:
+            checks['discord_webhook'] = {
+                'status': 'degraded',
+                'configured': False,
+                'details': 'Webhook URL not configured'
+            }
+            overall_status = 'degraded'
+    except Exception as e:
+        checks['discord_webhook'] = {'status': 'unhealthy', 'error': str(e)}
+        overall_status = 'degraded'
+    
+    # Check 3: AI API key present
+    try:
+        ai_keys = {
+            'anthropic': bool(os.getenv('ANTHROPIC_API_KEY')),
+            'openai': bool(os.getenv('OPENAI_API_KEY'))
+        }
+        ai_configured = any(ai_keys.values())
+        checks['ai_api'] = {
+            'status': 'healthy' if ai_configured else 'degraded',
+            'keys': ai_keys
+        }
+        if not ai_configured:
+            overall_status = 'degraded'
+    except Exception as e:
+        checks['ai_api'] = {'status': 'unhealthy', 'error': str(e)}
+        overall_status = 'degraded'
+    
+    # Check 4: Active nodes count
+    try:
+        active_nodes_list = get_active_nodes() if 'get_active_nodes' in globals() else []
+        active_nodes_count = len(active_nodes_list)
+        checks['active_nodes'] = {
+            'status': 'healthy' if active_nodes_count > 0 else 'degraded',
+            'count': active_nodes_count
+        }
+        if active_nodes_count == 0:
+            overall_status = 'degraded'
+    except Exception as e:
+        checks['active_nodes'] = {'status': 'unhealthy', 'count': 0, 'error': str(e)}
+        overall_status = 'degraded'
+    
+    # Check 5: Open tasks count
+    try:
+        open_tasks_count = 0
+        tasks_file = os.path.join(DATA_DIR, 'tasks.json') if 'DATA_DIR' in globals() else 'tasks.json'
+        if os.path.exists(tasks_file):
+            with open(tasks_file, 'r') as f:
+                tasks = json.load(f)
+                open_tasks_count = sum(1 for t in tasks if isinstance(t, dict) and t.get('status') == 'open')
+        checks['open_tasks'] = {
+            'status': 'healthy',
+            'count': open_tasks_count
+        }
+    except Exception as e:
+        checks['open_tasks'] = {'status': 'degraded', 'count': 0, 'error': str(e)}
+        overall_status = 'degraded'
+    
+    # Calculate response time
+    response_time_ms = int((time.time() - start_time) * 1000)
+    
+    # Build response (maintaining backward compatibility)
     return jsonify({
-        'status': 'ok', 
+        'status': overall_status,
         'version': '3.4.0',
-        'ai': bool(ai_client), 
+        'timestamp': datetime.utcnow().isoformat(),
+        'response_time_ms': response_time_ms,
+        'checks': checks,
+        'ai': bool(ai_client),
         'claude': bool(claude_client),
         'proxy': True,
         'admin': True,
-        'active_nodes': active_nodes
+        'active_nodes': checks['active_nodes']['count']
     })
 
+
+@app.route
 
 @app.route('/api/v1/pricing', methods=['GET'])
 def unified_pricing():
