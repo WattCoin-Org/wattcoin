@@ -92,10 +92,12 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
+DEFAULT_RATE_LIMIT_PER_MIN = os.getenv("PUBLIC_RATE_LIMIT_PER_MIN", "60")
+DEFAULT_RATE_LIMIT_PER_HOUR = os.getenv("PUBLIC_RATE_LIMIT_PER_HOUR", "3600")
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    default_limits=[f"{DEFAULT_RATE_LIMIT_PER_HOUR} per hour", f"{DEFAULT_RATE_LIMIT_PER_MIN} per minute"],
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -106,13 +108,20 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    retry_after = int(getattr(e, "retry_after", 60) or 60)
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after
+    })
+    response.headers["Retry-After"] = str(retry_after)
+    return response, 429
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+
+
+def public_rate_limit():
+    return f"{os.getenv('PUBLIC_RATE_LIMIT_PER_MIN', '60')} per minute"
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -1397,6 +1406,7 @@ def proxy_moltbook():
 
 
 @app.route('/health')
+@limiter.limit(public_rate_limit)
 def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
@@ -1411,6 +1421,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(public_rate_limit)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1449,6 +1460,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(public_rate_limit)
 def bounty_stats():
     """
     Public bounty statistics for website.
@@ -1527,7 +1539,6 @@ def bounty_stats():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
 
 
 

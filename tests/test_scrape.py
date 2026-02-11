@@ -91,3 +91,15 @@ def test_scrape_json_success(monkeypatch):
     data = response.get_json()
     assert data["success"] is True
     assert data["content"] == {"ok": True}
+
+
+def test_public_rate_limit_returns_429_with_retry_after(monkeypatch):
+    monkeypatch.setenv("PUBLIC_RATE_LIMIT_PER_MIN", "1")
+    client = bridge_web.app.test_client()
+
+    ok = client.get("/api/v1/pricing")
+    limited = client.get("/api/v1/pricing")
+
+    assert ok.status_code == 200
+    assert limited.status_code == 429
+    assert limited.headers.get("Retry-After") is not None
