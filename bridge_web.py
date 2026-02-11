@@ -114,6 +114,9 @@ def ratelimit_handler(e):
 
 logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
 
+# Bounty #88: Public endpoint rate limit (configurable via env var)
+PUBLIC_RATE_LIMIT = os.getenv("PUBLIC_RATE_LIMIT", "60 per minute")
+
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
 # =============================================================================
@@ -683,11 +686,13 @@ HTML_TEMPLATE = """
 """
 
 @app.route('/')
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def index():
     history = session.get('history', [])
     return render_template_string(HTML_TEMPLATE, history=history)
 
 @app.route('/query', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def query():
     prompt = request.form.get('prompt', '')
     history = session.get('history', [])
@@ -707,6 +712,7 @@ def query():
             history=history, status={'type': 'error', 'message': f'AI error: {str(e)}'})
 
 @app.route('/send-to-claude', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def send_to_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
@@ -744,6 +750,7 @@ def send_to_claude():
             history=history, status={'type': 'error', 'message': f'Claude error: {str(e)}'})
 
 @app.route('/skip-claude', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def skip_claude():
     ai_response = request.form.get('ai_response', '')
     original_prompt = request.form.get('original_prompt', '')
@@ -761,6 +768,7 @@ def skip_claude():
         status={'type': 'success', 'message': 'Skipped Claude, logged AI response.'})
 
 @app.route('/send-to-ai', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def send_to_ai():
     claude_response = request.form.get('claude_response', '')
     prompt = f"Claude (implementation) responded:\n\n{claude_response}\n\nYour thoughts?"
@@ -781,6 +789,7 @@ def send_to_ai():
             history=history, status={'type': 'error', 'message': f'AI error: {str(e)}'})
 
 @app.route('/clear')
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def clear():
     session.clear()
     return render_template_string(HTML_TEMPLATE, 
@@ -792,6 +801,7 @@ def clear():
 # =============================================================================
 
 @app.route('/api/v1/scrape', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def scrape():
     """
     Web scraper endpoint - requires WATT payment or API key.
@@ -1168,6 +1178,7 @@ def scrape():
 # =============================================================================
 
 @app.route('/api/v1/llm', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def llm_query():
     """
     Public LLM endpoint - requires WATT payment.
@@ -1247,6 +1258,7 @@ def llm_query():
 
 
 @app.route('/proxy', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def proxy_request():
     """
     Generic HTTP proxy endpoint - bypasses Claude's egress restrictions.
@@ -1307,6 +1319,7 @@ def proxy_request():
 
 
 @app.route('/proxy/moltbook', methods=['POST'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def proxy_moltbook():
     """
     Convenience endpoint specifically for Moltbook API calls.
@@ -1381,6 +1394,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1419,6 +1433,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def bounty_stats():
     """
     Public bounty statistics for website.
