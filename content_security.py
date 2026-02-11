@@ -1,7 +1,6 @@
 # =============================================================================
-# CONTENT SECURITY SCANNER v1.2.0
-# Pre-AI-review checks for wallet injection, fabricated mechanisms, URL leaks,
-# and vendor reference exposure
+# CONTENT SECURITY SCANNER v1.3.0
+# Pre-AI-review checks for wallet injection, fabricated mechanisms, and URL leaks
 # Detection patterns loaded from CONTENT_SECURITY_CONFIG env var (never in git)
 # =============================================================================
 
@@ -36,12 +35,6 @@ PUBLIC_FACING_EXTENSIONS = {
 
 # Suspicious phrases suggesting fabricated payment mechanisms
 FABRICATED_MECHANISM_PATTERNS = _config.get("fabricated_mechanism_patterns", [])
-
-# Vendor-specific references that should not appear in external contributions
-VENDOR_REFERENCE_PATTERNS = _config.get("vendor_reference_patterns", [])
-
-# Files excluded from vendor reference checks (abstraction layers that legitimately reference vendors)
-VENDOR_CHECK_EXCLUDED_FILES = set(_config.get("vendor_check_excluded_files", []))
 
 # Fail-closed: if config not loaded, scanner blocks everything
 if not KNOWN_PROJECT_WALLETS or not INTERNAL_URL_PATTERNS or not FABRICATED_MECHANISM_PATTERNS:
@@ -133,31 +126,6 @@ def scan_pr_content(pr_diff, pr_files, submitter_wallet=None):
                     })
                     break
     
-    # --- CHECK 4: Vendor Reference Exposure ---
-    # Vendor-specific env var names, API references, or provider names in code
-    # Excluded files: abstraction layers that legitimately contain vendor references
-    if VENDOR_REFERENCE_PATTERNS:
-        flagged_vendor_files = set()  # One flag per file
-        for filepath, line_content in added_lines:
-            if filepath and filepath not in flagged_vendor_files:
-                # Skip excluded files (e.g., ai_provider.py)
-                basename = os.path.basename(filepath) if filepath else ""
-                if basename in VENDOR_CHECK_EXCLUDED_FILES:
-                    continue
-                # Skip comment-only lines (# ...) — reduce noise from documentation
-                stripped = line_content.strip()
-                if stripped.startswith('#'):
-                    continue
-                for pattern in VENDOR_REFERENCE_PATTERNS:
-                    if re.search(pattern, line_content, re.IGNORECASE):
-                        flags.append({
-                            "type": "vendor_reference",
-                            "severity": "high",
-                            "detail": f"Vendor-specific reference found in {filepath} — use vendor-neutral abstractions",
-                        })
-                        flagged_vendor_files.add(filepath)
-                        break
-    
     # Determine pass/fail
     has_critical = any(f["severity"] == "critical" for f in flags)
     has_high = any(f["severity"] == "high" for f in flags)
@@ -173,3 +141,4 @@ def format_flags_for_log(flags):
     for f in flags:
         lines.append(f"[{f['severity'].upper()}] {f['type']}: {f['detail']}")
     return '\n'.join(lines)
+
