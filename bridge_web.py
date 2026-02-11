@@ -121,7 +121,7 @@ from admin_blueprint import admin_bp
 from api_bounties import bounties_bp
 from api_llm import llm_bp, verify_watt_payment, save_used_signature
 from api_reputation import reputation_bp
-from api_tasks import tasks_bp
+from api_tasks import tasks_bp, load_tasks
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
 from api_pr_review import pr_review_bp
 from api_webhooks import webhooks_bp, process_payment_queue, load_reputation_data
@@ -1398,16 +1398,39 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
+    data_dir = os.getenv('DATA_DIR', '/app/data')
+    tasks_file = os.path.join(data_dir, 'tasks.json')
+    bounties_file = os.path.join(data_dir, 'bounties.json')
+
+    files_ok = all([
+        os.path.exists(tasks_file),
+        os.path.exists(bounties_file),
+        os.access(tasks_file, os.R_OK),
+        os.access(bounties_file, os.R_OK)
+    ])
+    discord_ok = bool(os.getenv('DISCORD_WEBHOOK'))
+    ai_ok = bool(os.getenv('AI_API_KEY'))
+
+    services = {
+        'data_files': 'ok' if files_ok else 'degraded',
+        'discord': 'ok' if discord_ok else 'degraded',
+        'ai_api': 'ok' if ai_ok else 'degraded'
+    }
+
     active_nodes = len(get_active_nodes())
+    open_tasks = len([t for t in load_tasks() if t.get('status') == 'open'])
+
+    healthy = all(v == 'ok' for v in services.values())
+    status_code = 200 if healthy else 503
+
     return jsonify({
-        'status': 'ok', 
+        'status': 'healthy' if healthy else 'degraded',
         'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        'services': services,
+        'active_nodes': active_nodes,
+        'open_tasks': open_tasks,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }), status_code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
