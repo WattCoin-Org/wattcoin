@@ -91,3 +91,16 @@ def test_scrape_json_success(monkeypatch):
     data = response.get_json()
     assert data["success"] is True
     assert data["content"] == {"ok": True}
+
+
+def test_health_endpoint_degraded_when_data_or_ai_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "missing"))
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    with bridge_web.app.test_request_context("/health"):
+        response, status = bridge_web.health()
+    data = response.get_json()
+    assert status == 503
+    assert data["services"]["database"] == "degraded"
+    assert data["services"]["ai_api"] == "degraded"

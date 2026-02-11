@@ -64,6 +64,7 @@ from scraper_errors import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "")
+APP_STARTED_AT = time.time()
 
 # =============================================================================
 # LOGGING
@@ -1398,16 +1399,47 @@ def proxy_moltbook():
 
 @app.route('/health')
 def health():
-    active_nodes = len(get_active_nodes())
+    data_dir = os.getenv("DATA_DIR", "/app/data")
+    tasks_file = os.path.join(data_dir, "tasks.json")
+    nodes_file = os.path.join(data_dir, "nodes.json")
+    def _file_readable(path):
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r"):
+                return True
+        except (IOError, OSError):
+            return False
+    def _open_tasks_count(path):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            tasks = data.get("tasks", {})
+            if isinstance(tasks, dict):
+                return sum(1 for task in tasks.values() if task.get("status") == "open")
+        except Exception:
+            pass
+        return 0
+    db_ok = _file_readable(tasks_file) and _file_readable(nodes_file)
+    discord_ok = bool(os.getenv("DISCORD_WEBHOOK_URL", "").strip())
+    ai_ok = bool((os.getenv("AI_API_KEY") or os.getenv("CLAUDE_API_KEY") or "").strip())
+    active_nodes = len(get_active_nodes()) if _file_readable(nodes_file) else 0
+    open_tasks = _open_tasks_count(tasks_file) if _file_readable(tasks_file) else 0
+    status = "healthy" if (db_ok and ai_ok) else "degraded"
+    code = 200 if status == "healthy" else 503
     return jsonify({
-        'status': 'ok', 
-        'version': '3.4.0',
-        'ai': bool(ai_client), 
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
-        'active_nodes': active_nodes
-    })
+        "status": status,
+        "version": "3.4.0",
+        "uptime_seconds": int(time.time() - APP_STARTED_AT),
+        "services": {
+            "database": "ok" if db_ok else "degraded",
+            "discord": "ok" if discord_ok else "degraded",
+            "ai_api": "ok" if ai_ok else "degraded",
+        },
+        "active_nodes": active_nodes,
+        "open_tasks": open_tasks,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }), code
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
@@ -1527,8 +1559,6 @@ def bounty_stats():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-
 
 
 
