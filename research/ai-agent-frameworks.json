@@ -1,0 +1,367 @@
+{
+  "generated_at_utc": "2026-02-11T13:04:21Z",
+  "source": "GitHub REST API",
+  "framework_count": 20,
+  "frameworks": [
+    {
+      "name": "OpenClaw",
+      "github_url": "https://github.com/openclaw/openclaw",
+      "github_repo": "openclaw/openclaw",
+      "github_stars": 184649,
+      "primary_language": "TypeScript",
+      "description": "Your own personal AI assistant. Any OS. Any Platform. The lobster way. \ud83e\udd9e",
+      "key_features": [
+        "tool_use",
+        "multi-agent",
+        "skills",
+        "automation"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Aligned with autonomous task execution and bounty workflows; low adaptation overhead for WATT-based payments.",
+      "last_updated": "2026-02-11T13:03:34Z"
+    },
+    {
+      "name": "AutoGPT",
+      "github_url": "https://github.com/Significant-Gravitas/AutoGPT",
+      "github_repo": "Significant-Gravitas/AutoGPT",
+      "github_stars": 181787,
+      "primary_language": "Python",
+      "description": "AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters.",
+      "key_features": [
+        "autonomous_agents",
+        "tool_use",
+        "task_planning",
+        "memory"
+      ],
+      "license": "NOASSERTION",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Broad autonomy support but usually needs tighter guardrails for production payment-linked actions.",
+      "last_updated": "2026-02-11T12:52:45Z"
+    },
+    {
+      "name": "LangChain Agents",
+      "github_url": "https://github.com/langchain-ai/langchain",
+      "github_repo": "langchain-ai/langchain",
+      "github_stars": 126480,
+      "primary_language": "Python",
+      "description": "\ud83e\udd9c\ud83d\udd17 The platform for reliable agents.",
+      "key_features": [
+        "tool_use",
+        "memory",
+        "retrieval",
+        "agent_orchestration"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Mature tool-calling and retrieval stack makes it straightforward to wrap WATT APIs as agent tools.",
+      "last_updated": "2026-02-11T12:52:58Z"
+    },
+    {
+      "name": "MetaGPT",
+      "github_url": "https://github.com/FoundationAgents/MetaGPT",
+      "github_repo": "geekan/MetaGPT",
+      "github_stars": 64118,
+      "primary_language": "Python",
+      "description": "\ud83c\udf1f The Multi-Agent Framework: First AI Software Company, Towards Natural Language Programming",
+      "key_features": [
+        "multi-agent",
+        "role_based_agents",
+        "software_delivery",
+        "planning"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Software-delivery focused agent roles fit WATT bounty and repo-targeted execution patterns.",
+      "last_updated": "2026-02-11T12:59:17Z"
+    },
+    {
+      "name": "Open Interpreter",
+      "github_url": "https://github.com/openinterpreter/open-interpreter",
+      "github_repo": "OpenInterpreter/open-interpreter",
+      "github_stars": 62110,
+      "primary_language": "Python",
+      "description": "A natural language interface for computers",
+      "key_features": [
+        "local_execution",
+        "tool_use",
+        "code_actions",
+        "automation"
+      ],
+      "license": "AGPL-3.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Powerful automation surface, but local execution permissions require strict sandbox policy.",
+      "last_updated": "2026-02-11T11:35:04Z"
+    },
+    {
+      "name": "Microsoft AutoGen",
+      "github_url": "https://github.com/microsoft/autogen",
+      "github_repo": "microsoft/autogen",
+      "github_stars": 54484,
+      "primary_language": "Python",
+      "description": "A programming framework for agentic AI",
+      "key_features": [
+        "multi-agent",
+        "tool_use",
+        "group_chat",
+        "orchestration"
+      ],
+      "license": "CC-BY-4.0",
+      "watt_integration_potential": "High",
+      "integration_reason": "Strong multi-agent orchestration maps directly to SwarmSolve-style claim/review/ship loops.",
+      "last_updated": "2026-02-11T12:54:47Z"
+    },
+    {
+      "name": "LlamaIndex Workflows",
+      "github_url": "https://github.com/run-llama/llama_index",
+      "github_repo": "run-llama/llama_index",
+      "github_stars": 46939,
+      "primary_language": "Python",
+      "description": "LlamaIndex is the leading framework for building LLM-powered agents over your data.",
+      "key_features": [
+        "retrieval",
+        "agentic_workflows",
+        "tool_use",
+        "data_connectors"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Data-connected workflows can integrate WATT services and telemetry with minimal glue code.",
+      "last_updated": "2026-02-11T12:52:40Z"
+    },
+    {
+      "name": "CrewAI",
+      "github_url": "https://github.com/crewAIInc/crewAI",
+      "github_repo": "crewAIInc/crewAI",
+      "github_stars": 43977,
+      "primary_language": "Python",
+      "description": "Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.",
+      "key_features": [
+        "multi-agent",
+        "task_flows",
+        "tool_use",
+        "planning"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Task/crew abstractions are practical for structured paid task routing and execution auditing.",
+      "last_updated": "2026-02-11T12:52:44Z"
+    },
+    {
+      "name": "LiteLLM",
+      "github_url": "https://github.com/BerriAI/litellm",
+      "github_repo": "BerriAI/litellm",
+      "github_stars": 35756,
+      "primary_language": "Python",
+      "description": "Python SDK, Proxy Server (AI Gateway) to call 100+ LLM APIs in OpenAI (or native) format, with cost tracking, guardrails, loadbalancing and logging. [Bedrock, Azure, OpenAI, VertexAI, Cohere, Anthropic, Sagemaker, HuggingFace, VLLM, NVIDIA NIM]",
+      "key_features": [
+        "model_routing",
+        "provider_abstraction",
+        "budget_controls",
+        "observability"
+      ],
+      "license": "NOASSERTION",
+      "watt_integration_potential": "High",
+      "integration_reason": "Useful LLM gateway for WATT services with routing, limits, and provider flexibility.",
+      "last_updated": "2026-02-11T12:52:46Z"
+    },
+    {
+      "name": "AgentGPT",
+      "github_url": "https://github.com/reworkd/AgentGPT",
+      "github_repo": "reworkd/AgentGPT",
+      "github_stars": 35702,
+      "primary_language": "TypeScript",
+      "description": "\ud83e\udd16 Assemble, configure, and deploy autonomous AI Agents in your browser.",
+      "key_features": [
+        "web_ui",
+        "autonomous_agents",
+        "goal_decomposition",
+        "browser_exec"
+      ],
+      "license": "GPL-3.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Good operator UX; backend hardening is still needed for financial-grade automation.",
+      "last_updated": "2026-02-11T11:52:18Z"
+    },
+    {
+      "name": "DSPy",
+      "github_url": "https://github.com/stanfordnlp/dspy",
+      "github_repo": "stanfordnlp/dspy",
+      "github_stars": 32136,
+      "primary_language": "Python",
+      "description": "DSPy: The framework for programming\u2014not prompting\u2014language models",
+      "key_features": [
+        "programmatic_prompting",
+        "optimizer",
+        "evaluation",
+        "composable_modules"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Excellent optimization/eval layer; integration value is highest around existing execution frameworks.",
+      "last_updated": "2026-02-11T13:03:47Z"
+    },
+    {
+      "name": "ChatDev",
+      "github_url": "https://github.com/OpenBMB/ChatDev",
+      "github_repo": "OpenBMB/ChatDev",
+      "github_stars": 30850,
+      "primary_language": "Python",
+      "description": "ChatDev 2.0: Dev All through LLM-powered Multi-Agent Collaboration",
+      "key_features": [
+        "multi-agent",
+        "software_company_sim",
+        "code_generation",
+        "planning"
+      ],
+      "license": "Apache-2.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Interesting collaboration model; practical integration requires workflow simplification.",
+      "last_updated": "2026-02-11T13:01:14Z"
+    },
+    {
+      "name": "smolagents",
+      "github_url": "https://github.com/huggingface/smolagents",
+      "github_repo": "huggingface/smolagents",
+      "github_stars": 25401,
+      "primary_language": "Python",
+      "description": "\ud83e\udd17 smolagents: a barebones library for agents that think in code.",
+      "key_features": [
+        "tool_use",
+        "code_agents",
+        "lightweight",
+        "hub_integration"
+      ],
+      "license": "Apache-2.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Fast for prototyping WATT tools; larger production orchestration needs extra infra.",
+      "last_updated": "2026-02-11T12:36:09Z"
+    },
+    {
+      "name": "LangGraph",
+      "github_url": "https://github.com/langchain-ai/langgraph",
+      "github_repo": "langchain-ai/langgraph",
+      "github_stars": 24602,
+      "primary_language": "Python",
+      "description": "Build resilient language agents as graphs.",
+      "key_features": [
+        "stateful_graphs",
+        "tool_use",
+        "human_in_loop",
+        "durable_execution"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Durable graph state and human-in-the-loop controls suit escrow and payout-sensitive pipelines.",
+      "last_updated": "2026-02-11T12:52:41Z"
+    },
+    {
+      "name": "Haystack Agents",
+      "github_url": "https://github.com/deepset-ai/haystack",
+      "github_repo": "deepset-ai/haystack",
+      "github_stars": 24165,
+      "primary_language": "MDX",
+      "description": "AI orchestration framework to build customizable, production-ready LLM applications. Connect components (models, vector DBs, file converters) to pipelines or agents that can interact with your data. With advanced retrieval methods, it's best suited for building RAG, question answering, semantic search or conversational agent chatbots.",
+      "key_features": [
+        "retrieval",
+        "pipelines",
+        "tool_use",
+        "evaluation"
+      ],
+      "license": "Apache-2.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Strong enterprise retrieval tooling; direct marketplace automation needs extra task-state plumbing.",
+      "last_updated": "2026-02-11T12:53:06Z"
+    },
+    {
+      "name": "BabyAGI",
+      "github_url": "https://github.com/yoheinakajima/babyagi",
+      "github_repo": "yoheinakajima/babyagi",
+      "github_stars": 22137,
+      "primary_language": "Python",
+      "description": "",
+      "key_features": [
+        "task_management",
+        "memory",
+        "planning",
+        "autonomous_loop"
+      ],
+      "license": "Unknown",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Useful lightweight planner; needs external reliability and policy layers for WATT operations.",
+      "last_updated": "2026-02-11T11:46:29Z"
+    },
+    {
+      "name": "Mastra",
+      "github_url": "https://github.com/mastra-ai/mastra",
+      "github_repo": "mastra-ai/mastra",
+      "github_stars": 20987,
+      "primary_language": "TypeScript",
+      "description": "From the team behind Gatsby, Mastra is a framework for building AI-powered applications and agents with a modern TypeScript stack.",
+      "key_features": [
+        "agent_framework",
+        "workflows",
+        "integrations",
+        "tool_use"
+      ],
+      "license": "NOASSERTION",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Good workflow primitives, though ecosystem depth is still growing.",
+      "last_updated": "2026-02-11T13:02:35Z"
+    },
+    {
+      "name": "ElizaOS",
+      "github_url": "https://github.com/elizaOS/eliza",
+      "github_repo": "elizaOS/eliza",
+      "github_stars": 17511,
+      "primary_language": "TypeScript",
+      "description": "Autonomous agents for everyone",
+      "key_features": [
+        "agent_runtime",
+        "plugin_system",
+        "social_integrations",
+        "memory"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Plugin ecosystem helps distribution, but primary focus is social-agent runtime.",
+      "last_updated": "2026-02-11T10:43:46Z"
+    },
+    {
+      "name": "CAMEL",
+      "github_url": "https://github.com/camel-ai/camel",
+      "github_repo": "camel-ai/camel",
+      "github_stars": 16006,
+      "primary_language": "Python",
+      "description": "\ud83d\udc2b CAMEL: The first and the best multi-agent framework. Finding the Scaling Law of Agents. https://www.camel-ai.org",
+      "key_features": [
+        "multi-agent",
+        "role_play",
+        "simulation",
+        "society_of_agents"
+      ],
+      "license": "Apache-2.0",
+      "watt_integration_potential": "Medium",
+      "integration_reason": "Strong multi-agent research patterns; production integration usually needs custom controls.",
+      "last_updated": "2026-02-11T13:02:35Z"
+    },
+    {
+      "name": "PydanticAI",
+      "github_url": "https://github.com/pydantic/pydantic-ai",
+      "github_repo": "pydantic/pydantic-ai",
+      "github_stars": 14823,
+      "primary_language": "Python",
+      "description": "GenAI Agent Framework, the Pydantic way",
+      "key_features": [
+        "typed_agents",
+        "tool_use",
+        "validation",
+        "python_ecosystem"
+      ],
+      "license": "MIT",
+      "watt_integration_potential": "High",
+      "integration_reason": "Typed tool interfaces reduce runtime risk in payment and bounty automation paths.",
+      "last_updated": "2026-02-11T12:45:42Z"
+    }
+  ]
+}
