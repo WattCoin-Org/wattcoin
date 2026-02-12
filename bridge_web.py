@@ -23,9 +23,6 @@ CHANGELOG v1.3.0:
 - Keys managed via admin dashboard
 
 CHANGELOG v1.2.0:
-
-# App start time for uptime calculation
-APP_START_TIME = time.time()
 - Added admin blueprint for bounty dashboard
 - Added /admin/* routes
 - Requires ADMIN_PASSWORD env var for dashboard access
@@ -36,6 +33,9 @@ import json
 import time
 import random
 import logging
+
+# App start time for uptime calculation (placed outside docstring)
+APP_START_TIME = time.time()
 import ipaddress
 import socket
 from urllib.parse import urlparse
@@ -1405,35 +1405,55 @@ def health():
     
     Returns 200 if healthy, 503 if critical service degraded.
     All checks are lightweight (<500ms total) - no HTTP calls.
+    Maintains backward compatibility with existing fields.
     """
-    services = {}
+    # Initialize services dict with defaults
+    services = {
+        'database': 'ok',
+        'discord': 'ok',
+        'ai_api': 'ok'
+    }
     critical_degraded = False
     
     # Check 1: Data files readable (lightweight - just check existence)
-    data_files = [
-        'data/contributor_reputation.json',
-        'data/reputation.json',
-        'data/security_logs.json'
-    ]
-    data_ok = all(os.path.exists(f) for f in data_files)
-    services['database'] = 'ok' if data_ok else 'degraded'
-    if not data_ok:
+    try:
+        data_files = [
+            'data/contributor_reputation.json',
+            'data/reputation.json',
+            'data/security_logs.json'
+        ]
+        data_ok = all(os.path.exists(f) for f in data_files)
+        services['database'] = 'ok' if data_ok else 'degraded'
+        if not data_ok:
+            critical_degraded = True
+    except Exception:
+        services['database'] = 'degraded'
         critical_degraded = True
     
     # Check 2: Discord webhook configured (check env var exists)
-    discord_ok = bool(os.getenv('DISCORD_WEBHOOK_URL', ''))
-    services['discord'] = 'ok' if discord_ok else 'degraded'
+    try:
+        discord_ok = bool(os.getenv('DISCORD_WEBHOOK_URL', ''))
+        services['discord'] = 'ok' if discord_ok else 'degraded'
+    except Exception:
+        services['discord'] = 'degraded'
     
     # Check 3: AI API key present (check env vars exist)
-    ai_api_ok = bool(os.getenv('AI_API_KEY', '')) and bool(os.getenv('CLAUDE_API_KEY', ''))
-    services['ai_api'] = 'ok' if ai_api_ok else 'degraded'
-    if not ai_api_ok:
+    try:
+        ai_api_ok = bool(os.getenv('AI_API_KEY', '')) and bool(os.getenv('CLAUDE_API_KEY', ''))
+        services['ai_api'] = 'ok' if ai_api_ok else 'degraded'
+        if not ai_api_ok:
+            critical_degraded = True
+    except Exception:
+        services['ai_api'] = 'degraded'
         critical_degraded = True
     
-    # Get counts from data files (lightweight reads)
-    active_nodes = len(get_active_nodes())
+    # Get active nodes count
+    try:
+        active_nodes = len(get_active_nodes())
+    except Exception:
+        active_nodes = 0
     
-    # Count open tasks from data files
+    # Count open tasks from data files (with error handling)
     open_tasks = 0
     try:
         if os.path.exists('data/tasks.json'):
@@ -1444,14 +1464,24 @@ def health():
         open_tasks = 0
     
     # Calculate uptime
-    uptime_seconds = int(time.time() - APP_START_TIME)
+    try:
+        uptime_seconds = int(time.time() - APP_START_TIME)
+    except Exception:
+        uptime_seconds = 0
     
+    # Build response maintaining backward compatibility
     response = {
+        # Legacy fields (maintain backward compatibility)
         'status': 'healthy' if not critical_degraded else 'degraded',
         'version': '3.4.0',
+        'ai': bool(ai_client), 
+        'claude': bool(claude_client),
+        'proxy': True,
+        'admin': True,
+        'active_nodes': active_nodes,
+        # New fields
         'uptime_seconds': uptime_seconds,
         'services': services,
-        'active_nodes': active_nodes,
         'open_tasks': open_tasks,
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     }
