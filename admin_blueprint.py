@@ -3904,3 +3904,45 @@ def api_eval_stats():
         "ready": total >= 180,
         "counts": counts,
     })
+
+@admin_bp.route('/api/eval-export')
+@login_required
+def api_eval_export():
+    """Export all WSI training data as a zip download."""
+    import os as _os
+    import io
+    import zipfile
+    from flask import send_file
+
+    eval_dir = _os.getenv("EVAL_LOG_DIR", "data/eval_log")
+    subdirs = [
+        "pr_reviews_public", "pr_reviews_internal",
+        "bounty_evaluations", "security_audits",
+        "swarmsolve_audits", "task_verifications",
+    ]
+
+    buf = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for subdir in subdirs:
+            path = _os.path.join(eval_dir, subdir)
+            if not _os.path.isdir(path):
+                continue
+            for fname in sorted(_os.listdir(path)):
+                if not fname.endswith(".json"):
+                    continue
+                fpath = _os.path.join(path, fname)
+                zf.write(fpath, _os.path.join(subdir, fname))
+                file_count += 1
+
+    if file_count == 0:
+        return jsonify({"error": "No eval data found"}), 404
+
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="wsi_training_data.zip",
+    )
+
