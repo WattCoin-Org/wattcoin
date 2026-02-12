@@ -1,0 +1,16 @@
+[Unit]
+Description=WattCoin Raspberry Pi Sensor Oracle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/wattcoin/pi/sensor_oracle
+Environment=WATT_ORACLE_API_URL=https://api.wattcoin.org/api/v1/oracle/report
+Environment=WATT_ORACLE_INTERVAL_SEC=60
+ExecStart=/opt/wattcoin/pi/sensor_oracle/.venv/bin/python /opt/wattcoin/pi/sensor_oracle/oracle.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
