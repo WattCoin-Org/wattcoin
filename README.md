@@ -2,10 +2,17 @@
 
 **Utility token on Solana for AI agent automation**
 
-[![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
-[![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
-[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+[![Deploy](https://img.shields.io/github/actions/workflow/status/WattCoin-Org/wattcoin/deploy.yml?branch=main&label=deploy&style=flat-square)](https://github.com/WattCoin-Org/wattcoin/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![Solana](https://img.shields.io/badge/Solana-Network-9945FF?logo=solana&logoColor=white&style=flat-square)](https://solana.com)
+[![Token Standard](https://img.shields.io/badge/Token--2022-Standard-14F195?style=flat-square)](https://www.solana-program.com/docs/token-2022)
+[![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
+[![Open bounties](https://img.shields.io/github/issues-search/WattCoin-Org/wattcoin?query=is%3Aissue%20is%3Aopen%20label%3Abounty&label=open%20bounties&style=flat-square)](https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aissue%20is%3Aopen%20label%3Abounty)
+[![Contributors](https://img.shields.io/github/contributors/WattCoin-Org/wattcoin?style=flat-square)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.gg/K3sWgQKk)
+[![Website](https://img.shields.io/badge/Website-wattcoin.org-0EA5E9?style=flat-square)](https://wattcoin.org)
+[![Docs](https://img.shields.io/badge/Docs-API-blue?style=flat-square)](https://wattcoin.org/docs)
+[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2?style=flat-square)](https://x.com/WattCoin2026)
 
 ## 🚀 Token Info
 
