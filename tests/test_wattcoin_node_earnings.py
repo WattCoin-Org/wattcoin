@@ -59,3 +59,44 @@ def test_invalid_node_id_from_api(monkeypatch):
         assert "Invalid node ID" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_timeout_raises_runtime_error(monkeypatch):
+    monkeypatch.setenv("WATTNODE_API_BASE_URL", "https://api.example.com")
+
+    def _raise_timeout(_url, timeout):
+        raise wc.requests.Timeout("boom")
+
+    monkeypatch.setattr(wc.requests, "get", _raise_timeout)
+
+    try:
+        wc.get_node_earnings("node_abc123")
+    except RuntimeError as exc:
+        assert "timed out" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_server_error(monkeypatch):
+    monkeypatch.setenv("WATTNODE_API_BASE_URL", "https://api.example.com")
+    monkeypatch.setattr(wc.requests, "get", lambda _url, timeout: _mock_response(status_code=500))
+
+    try:
+        wc.get_node_earnings("node_abc123")
+    except RuntimeError as exc:
+        assert "Server error" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_rejects_out_of_range_success_rate(monkeypatch):
+    monkeypatch.setenv("WATTNODE_API_BASE_URL", "https://api.example.com")
+    payload = {"total_watt": 12.5, "jobs_completed": 3, "success_rate": 1.2}
+    monkeypatch.setattr(wc.requests, "get", lambda _url, timeout: _mock_response(payload=payload))
+
+    try:
+        wc.get_node_earnings("node_abc123")
+    except RuntimeError as exc:
+        assert "Malformed response" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")

@@ -540,6 +540,8 @@ def get_node_earnings(node_id: str) -> dict:
 
     try:
         response = requests.get(url, timeout=timeout_seconds)
+    except requests.Timeout as exc:
+        raise RuntimeError("Request timed out") from exc
     except requests.RequestException as exc:
         raise RuntimeError(f"Request failed: {exc}") from exc
 
@@ -547,6 +549,8 @@ def get_node_earnings(node_id: str) -> dict:
         raise ValueError("Invalid node ID")
     if response.status_code >= 500:
         raise RuntimeError(f"Server error: {response.status_code}")
+    if response.status_code >= 400:
+        raise RuntimeError(f"Client error: {response.status_code}")
 
     try:
         payload = response.json()
@@ -560,6 +564,11 @@ def get_node_earnings(node_id: str) -> dict:
         success_rate = float(data["success_rate"])
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError("Malformed response") from exc
+
+    if jobs_completed < 0 or total_watt < 0:
+        raise RuntimeError("Malformed response")
+    if success_rate < 0 or success_rate > 1:
+        raise RuntimeError("Malformed response")
 
     return {
         "total_watt": total_watt,
