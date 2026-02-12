@@ -3874,8 +3874,14 @@ def api_security_scan_latest():
 @admin_bp.route('/api/eval-stats')
 @login_required
 def api_eval_stats():
-    """Return WSI training data file counts per eval type."""
+    """Return WSI training data file counts per eval type.
+    
+    Query params:
+        export=zip  — download all eval data as zip
+        export=json — download all eval data as JSON array
+    """
     import os as _os
+    from flask import request as _req
 
     eval_dir = _os.getenv("EVAL_LOG_DIR", "data/eval_log")
     subdirs = {
@@ -3887,6 +3893,49 @@ def api_eval_stats():
         "task_verifications": "task_verifications",
     }
 
+    export_mode = _req.args.get("export", "").lower()
+
+    if export_mode == "zip":
+        import io, zipfile
+        from flask import send_file
+        buf = io.BytesIO()
+        file_count = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for key, subdir in subdirs.items():
+                path = _os.path.join(eval_dir, subdir)
+                if not _os.path.isdir(path):
+                    continue
+                for fname in sorted(_os.listdir(path)):
+                    if not fname.endswith(".json"):
+                        continue
+                    zf.write(_os.path.join(path, fname), _os.path.join(subdir, fname))
+                    file_count += 1
+        if file_count == 0:
+            return jsonify({"error": "No eval data found"}), 404
+        buf.seek(0)
+        return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="wsi_training_data.zip")
+
+    if export_mode == "json":
+        import json as _json
+        all_evals = []
+        for key, subdir in subdirs.items():
+            path = _os.path.join(eval_dir, subdir)
+            if not _os.path.isdir(path):
+                continue
+            for fname in sorted(_os.listdir(path)):
+                if not fname.endswith(".json"):
+                    continue
+                try:
+                    with open(_os.path.join(path, fname)) as f:
+                        record = _json.load(f)
+                        record["_eval_type"] = key
+                        record["_filename"] = fname
+                        all_evals.append(record)
+                except Exception:
+                    continue
+        return jsonify({"total": len(all_evals), "evaluations": all_evals})
+
+    # Default: return stats
     counts = {}
     total = 0
     for key, subdir in subdirs.items():
@@ -3904,45 +3953,3 @@ def api_eval_stats():
         "ready": total >= 180,
         "counts": counts,
     })
-
-@admin_bp.route('/api/eval-export')
-@login_required
-def api_eval_export():
-    """Export all WSI training data as a zip download."""
-    import os as _os
-    import io
-    import zipfile
-    from flask import send_file
-
-    eval_dir = _os.getenv("EVAL_LOG_DIR", "data/eval_log")
-    subdirs = [
-        "pr_reviews_public", "pr_reviews_internal",
-        "bounty_evaluations", "security_audits",
-        "swarmsolve_audits", "task_verifications",
-    ]
-
-    buf = io.BytesIO()
-    file_count = 0
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for subdir in subdirs:
-            path = _os.path.join(eval_dir, subdir)
-            if not _os.path.isdir(path):
-                continue
-            for fname in sorted(_os.listdir(path)):
-                if not fname.endswith(".json"):
-                    continue
-                fpath = _os.path.join(path, fname)
-                zf.write(fpath, _os.path.join(subdir, fname))
-                file_count += 1
-
-    if file_count == 0:
-        return jsonify({"error": "No eval data found"}), 404
-
-    buf.seek(0)
-    return send_file(
-        buf,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name="wsi_training_data.zip",
-    )
-
