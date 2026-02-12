@@ -1,0 +1,114 @@
+{
+  "generatedAt": "2026-02-12T12:20:12.666Z",
+  "dataAvailabilityNote": "Free/public endpoints did not provide consistent holder-address timeseries and top-10 concentration for all selected tokens at run time; fields are null where unavailable.",
+  "tokens": [
+    {
+      "symbol": "WATT",
+      "mint": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 5901.74,
+      "priceUsd": "0.000005940",
+      "pairAddress": "8vtkM2FizcMmNxno28RbKpzaba8gT3bwQYqMv3XxzYNo",
+      "pairUrl": "https://dexscreener.com/solana/8vtkm2fizcmmnxno28rbkpzaba8gt3bwqyqmv3xxzyno",
+      "pairAgeDays": 4,
+      "txns24h": {
+        "buys": 26,
+        "sells": 28
+      },
+      "volume24hUsd": 2850.51
+    },
+    {
+      "symbol": "AI16Z",
+      "mint": "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 39014.17,
+      "priceUsd": "0.0003464",
+      "pairAddress": "7qAVrzrbULwg1B13YseqA95Uapf8EVp9jQE5uipqFMoP",
+      "pairUrl": "https://dexscreener.com/solana/7qavrzrbulwg1b13yseqa95uapf8evp9jqe5uipqfmop",
+      "pairAgeDays": 263,
+      "txns24h": {
+        "buys": 792,
+        "sells": 879
+      },
+      "volume24hUsd": 35668.23
+    },
+    {
+      "symbol": "ACT",
+      "mint": "GJAFwWjJ3vnTsrQVabjBVK2TYB1YtRCQXRDfDgUnpump",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 1398482.42,
+      "priceUsd": "0.01428",
+      "pairAddress": "B4PHSkL6CeZbxVqm1aUPQuVpc5ERFcaZj7u9dhtphmVX",
+      "pairUrl": "https://dexscreener.com/solana/b4phskl6cezbxvqm1aupquvpc5erfcazj7u9dhtphmvx",
+      "pairAgeDays": 481,
+      "txns24h": {
+        "buys": 748,
+        "sells": 725
+      },
+      "volume24hUsd": 178874.36
+    },
+    {
+      "symbol": "GOAT",
+      "mint": "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 1518290.77,
+      "priceUsd": "0.02275",
+      "pairAddress": "9Tb2ohu5P16BpBarqd3N27WnkF51Ukfs8Z1GzzLDxVZW",
+      "pairUrl": "https://dexscreener.com/solana/9tb2ohu5p16bpbarqd3n27wnkf51ukfs8z1gzzldxvzw",
+      "pairAgeDays": 490,
+      "txns24h": {
+        "buys": 474,
+        "sells": 720
+      },
+      "volume24hUsd": 157894.04
+    },
+    {
+      "symbol": "GRIFFAIN",
+      "mint": "KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 1190814.4,
+      "priceUsd": "0.009417",
+      "pairAddress": "CpsMssqi3P9VMvNqxrdWVbSBCwyUHbGgNcrw7MorBq3g",
+      "pairUrl": "https://dexscreener.com/solana/cpsmssqi3p9vmvnqxrdwvbsbcwyuhbggncrw7morbq3g",
+      "pairAgeDays": 466,
+      "txns24h": {
+        "buys": 874,
+        "sells": 784
+      },
+      "volume24hUsd": 126809.91
+    },
+    {
+      "symbol": "ZEREBRO",
+      "mint": "8x5VqbHA8D7NkD52uNuS5nnt3PwA8pLD34ymskeSo2Wn",
+      "holdersCount": null,
+      "top10HolderConcentrationPct": null,
+      "holderGrowthOverTime": null,
+      "whaleVsRetailBreakdown": null,
+      "dexLiquidityDepthUsd": 1098848.85,
+      "priceUsd": "0.007911",
+      "pairAddress": "3sjNoCnkkhWPVXYGDtem8rCciHSGc9jSFZuUAzKbvRVp",
+      "pairUrl": "https://dexscreener.com/solana/3sjnocnkkhwpvxygdtem8rccihsgc9jsfzuuazkbvrvp",
+      "pairAgeDays": 472,
+      "txns24h": {
+        "buys": 454,
+        "sells": 560
+      },
+      "volume24hUsd": 225742.62
+    }
+  ]
+}
