@@ -4,16 +4,21 @@
 
 WattNode connects to the WattCoin network and fulfills jobs (web scraping, AI inference) for requesters. You earn **70%** of each job's payment in WATT.
 
-## 🖥️ Windows GUI (Recommended for Desktop)
+## 🖥️ Desktop GUI (Windows + Linux)
 
-For a point-and-click experience, use the Windows GUI app:
+For a point-and-click experience, use the WattNode GUI app:
 
-**[Download WattNode-Setup.exe](https://github.com/WattCoin-Org/wattcoin/releases)** or run from source:
+**[Download WattNode-Setup.exe](https://github.com/WattCoin-Org/wattcoin/releases)** (Windows) or run from source:
 
-```powershell
+```bash
 cd wattnode
 pip install -r requirements_gui.txt
 python wattnode_gui.py
+```
+
+Linux package build:
+```bash
+python build_linux.py
 ```
 
 See [README_GUI.md](README_GUI.md) for full GUI documentation.

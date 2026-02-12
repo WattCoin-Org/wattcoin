@@ -1,6 +1,6 @@
-# WattNode Windows GUI
+# WattNode Desktop GUI
 
-A desktop application to run WattNode and earn WATT.
+A desktop application to run WattNode and earn WATT on Windows and Linux.
 
 ![WattNode GUI](assets/screenshot.png)
 
@@ -27,28 +27,45 @@ pip install -r requirements_gui.txt
 python wattnode_gui.py
 ```
 
-## Building the Installer
+## Linux Quick Start
 
-### Prerequisites
+```bash
+cd wattnode
+pip install -r requirements_gui.txt
+python wattnode_gui.py
+```
+
+## Building Packages
+
+### Windows (EXE + Inno Setup installer)
+
+Prerequisites:
 - Python 3.9+
-- [Inno Setup](https://jrsoftware.org/isdl.php) (for creating installer)
+- [Inno Setup](https://jrsoftware.org/isdl.php)
 
-### Steps
 ```powershell
 cd wattnode
-
-# 1. Add logo to assets folder
-mkdir assets
-# Copy wattcoin_logo.png to assets/logo.png
-
-# 2. Build executable
 python build_windows.py
-
-# 3. Create installer (open in Inno Setup)
-# File → Open → installer.iss → Build → Compile
+# Then build installer.iss with Inno Setup
 ```
 
 Output: `installer_output/WattNode-Setup-1.0.0.exe`
+
+### Linux (single-file binary + AppImage)
+
+Prerequisites:
+- Python 3.9+
+- `pip install pyinstaller`
+- Optional: `appimagetool` for AppImage packaging
+
+```bash
+cd wattnode
+python build_linux.py
+```
+
+Outputs:
+- `dist/WattNode` (one-file Linux binary)
+- `dist/WattNode.AppImage` (if appimagetool is installed)
 
 ## Features
 
@@ -89,7 +106,8 @@ Your stake ensures network integrity. Nodes earn 70% of each job payment.
 | File | Description |
 |------|-------------|
 | `wattnode_gui.py` | Main GUI application |
-| `build_windows.py` | PyInstaller build script |
+| `build_windows.py` | Windows PyInstaller build script |
+| `build_linux.py` | Linux one-file + AppImage build script |
 | `installer.iss` | Inno Setup installer script |
 | `requirements_gui.txt` | Python dependencies |
 | `assets/logo.png` | WattCoin logo |
