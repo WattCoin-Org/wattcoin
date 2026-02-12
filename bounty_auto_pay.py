@@ -260,6 +260,29 @@ Thank you for your contribution!"""
         print(f"⚠️  Warning: Failed to post comment: {e}")
         return False
 
+def add_paid_label(issue_number: int):
+    """Add 'paid' label to GitHub issue for activity feed tracking."""
+    print(f"🏷️  Adding 'paid' label to issue #{issue_number}...")
+    
+    url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}/labels"
+    try:
+        resp = requests.post(
+            url,
+            headers=github_headers(),
+            json={"labels": ["paid"]},
+            timeout=15
+        )
+        if resp.status_code in (200, 201):
+            print(f"✅ 'paid' label added to issue #{issue_number}")
+            return True
+        else:
+            print(f"⚠️  Warning: Failed to add label: {resp.status_code}")
+            return False
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to add label: {e}")
+        return False
+
+
 def close_issue(issue_number: int):
     """Close GitHub issue."""
     print(f"🔒 Closing issue #{issue_number}...")
@@ -370,6 +393,9 @@ def process_payout(pr_number: int):
         # Step 8: Post to issue
         post_payment_to_issue(issue_number, amount, tx_sig)
         
+        # Step 8b: Add 'paid' label (for activity feed accuracy)
+        add_paid_label(issue_number)
+        
         # Step 9: Close issue
         close_issue(issue_number)
     
@@ -415,4 +441,5 @@ if __name__ == "__main__":
         sys.exit(1)
     
     process_payout(pr_number)
+
 
