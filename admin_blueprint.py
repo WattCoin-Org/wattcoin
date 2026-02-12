@@ -3871,3 +3871,36 @@ def api_security_scan_latest():
         return jsonify(result)
     return jsonify(None)
 
+@admin_bp.route('/api/eval-stats')
+@login_required
+def api_eval_stats():
+    """Return WSI training data file counts per eval type."""
+    import os as _os
+
+    eval_dir = _os.getenv("EVAL_LOG_DIR", "data/eval_log")
+    subdirs = {
+        "pr_reviews_public": "pr_reviews_public",
+        "pr_reviews_internal": "pr_reviews_internal",
+        "bounty_evaluations": "bounty_evaluations",
+        "security_audits": "security_audits",
+        "swarmsolve_audits": "swarmsolve_audits",
+        "task_verifications": "task_verifications",
+    }
+
+    counts = {}
+    total = 0
+    for key, subdir in subdirs.items():
+        path = _os.path.join(eval_dir, subdir)
+        if _os.path.isdir(path):
+            files = [f for f in _os.listdir(path) if f.endswith(".json")]
+            counts[key] = len(files)
+        else:
+            counts[key] = 0
+        total += counts[key]
+
+    return jsonify({
+        "total": total,
+        "finetune_threshold": 180,
+        "ready": total >= 180,
+        "counts": counts,
+    })
