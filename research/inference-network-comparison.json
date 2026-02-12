@@ -1,0 +1,109 @@
+{
+  "report": "Distributed AI inference network comparison",
+  "asOf": "2026-02",
+  "networks": [
+    {
+      "name": "Akash",
+      "architecture": "Decentralized compute marketplace (lease/bid)",
+      "supportedModelsHardware": "Containerized workloads; distributed GPU providers (A100/H100/consumer)",
+      "pricingModel": "Auction/lease hourly pricing",
+      "latencyTypical": "300ms-2s",
+      "operatorEconomics": "Providers earn lease revenue; requires uptime and infra ops",
+      "tokenIntegration": "AKT staking/governance/settlement"
+    },
+    {
+      "name": "Nosana",
+      "architecture": "Solana-based GPU job marketplace",
+      "supportedModelsHardware": "Inference/training jobs on distributed GPUs",
+      "pricingModel": "Job-based marketplace pricing",
+      "latencyTypical": "500ms-3s+",
+      "operatorEconomics": "GPU hosts earn NOS rewards/job fees; benchmark-sensitive",
+      "tokenIntegration": "NOS incentives"
+    },
+    {
+      "name": "Ritual",
+      "architecture": "Decentralized AI execution/workflow coordination",
+      "supportedModelsHardware": "Composable AI workflows and protocol-native compute",
+      "pricingModel": "Usage + protocol fee path",
+      "latencyTypical": "400ms-2.5s",
+      "operatorEconomics": "Node participants compensated for execution",
+      "tokenIntegration": "Ritual token incentives/governance"
+    },
+    {
+      "name": "Hyperbolic",
+      "architecture": "GPU cloud plus AI inference APIs",
+      "supportedModelsHardware": "Open-weight LLMs/image models and rentable GPUs",
+      "pricingModel": "Per-token/per-request API + hourly GPU rental",
+      "latencyTypical": "150ms-900ms",
+      "operatorEconomics": "Suppliers monetize idle capacity through managed orchestration",
+      "tokenIntegration": "Ecosystem token incentives"
+    },
+    {
+      "name": "Together AI",
+      "architecture": "Managed distributed inference/training cloud",
+      "supportedModelsHardware": "Broad OSS model catalog and enterprise GPUs",
+      "pricingModel": "Per-token/per-second/per-image API billing",
+      "latencyTypical": "120ms-700ms",
+      "operatorEconomics": "Managed cloud model; less direct permissionless operator rewards",
+      "tokenIntegration": "Limited direct token dependence"
+    },
+    {
+      "name": "Bittensor Subnets",
+      "architecture": "Subnet-based decentralized ML market",
+      "supportedModelsHardware": "Subnet-specific workloads (text/vision/embeddings/etc)",
+      "pricingModel": "Emission/reward driven; app-layer pricing varies",
+      "latencyTypical": "300ms-2s",
+      "operatorEconomics": "Miners/validators earn TAO via subnet scoring and stake dynamics",
+      "tokenIntegration": "TAO staking/rewards/governance"
+    },
+    {
+      "name": "io.net",
+      "architecture": "Decentralized GPU aggregation and scheduling",
+      "supportedModelsHardware": "Aggregated GPUs for inference/training endpoints",
+      "pricingModel": "Marketplace compute pricing + managed plans",
+      "latencyTypical": "200ms-1.2s",
+      "operatorEconomics": "Suppliers monetize idle GPUs via aggregated demand",
+      "tokenIntegration": "IO token incentives"
+    },
+    {
+      "name": "Gensyn",
+      "architecture": "Decentralized ML compute protocol (early stage)",
+      "supportedModelsHardware": "Training-oriented compute tasks; inference emerging",
+      "pricingModel": "Task-based compensation",
+      "latencyTypical": "500ms-3s",
+      "operatorEconomics": "Providers rewarded for completed/verified tasks",
+      "tokenIntegration": "Token-centric incentives (roadmap dependent)"
+    },
+    {
+      "name": "WSI",
+      "architecture": "Solana-native inference and payment network",
+      "supportedModelsHardware": "Curated model set + tiered hardware profile",
+      "pricingModel": "Per-token/per-request + SLA tiers + staking rebates",
+      "latencyTypical": "Target 150ms-800ms",
+      "operatorEconomics": "Operators earn request revenue with performance multipliers",
+      "tokenIntegration": "WATT discounts, staking boosts, reputation incentives"
+    }
+  ],
+  "gapAnalysis": {
+    "wsiDifferentiators": [
+      "Solana-native micropayment settlement",
+      "Token utility tied to real inference demand",
+      "Hybrid curated fast-lane + open marketplace model",
+      "Bounty-driven rapid open-source iteration"
+    ],
+    "lessonsFromCompetitors": [
+      "Improve DX, SDKs, and SLA communication (Together AI / Hyperbolic)",
+      "Strengthen capacity discovery and region-aware routing (Akash / io.net)",
+      "Implement transparent operator scoring (Bittensor)",
+      "Use benchmark-gated worker admission (Nosana)",
+      "Ship observability and status metrics like managed clouds"
+    ]
+  },
+  "recommendedActions": [
+    "Launch operator scorecard (uptime, p95 latency, success rate, price)",
+    "Publish transparent pricing matrix with WATT discount tiers",
+    "Introduce SLA-backed API tiers",
+    "Add region/model/provider-aware routing and failover",
+    "Run monthly reproducible benchmark harness"
+  ]
+}
