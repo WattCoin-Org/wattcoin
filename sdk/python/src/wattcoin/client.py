@@ -59,6 +59,9 @@ class WattClient:
     def stats(self):
         return self._request("GET", "stats")
 
+    def health(self):
+        return self._request("GET", "health")
+
     def pricing(self):
         return self._request("GET", "pricing")
 
