@@ -91,3 +91,4 @@ def call_ai(prompt, temperature=0.3, max_tokens=1000, timeout=60):
         return None, "AI API timeout"
     except Exception as e:
         return None, f"AI API error: {e}"
+
