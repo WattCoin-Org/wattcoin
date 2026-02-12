@@ -41,6 +41,15 @@ from pr_security import (
     is_banned,
     add_ban,
     SYSTEM_ACCOUNTS,
+    extract_stake_tx_from_pr_body,
+    verify_stake_payment,
+    record_stake,
+    return_stake,
+    get_stake_info,
+    get_bounty_amount_from_issue,
+    get_linked_issue_number,
+    ESCROW_WALLET,
+    STAKE_PERCENTAGE,
 )
 
 webhooks_bp = Blueprint('webhooks', __name__)
@@ -475,6 +484,43 @@ def add_issue_label(issue_number, label):
         return resp.status_code in [200, 201]
     except Exception as e:
         print(f"[LABEL] Failed to add '{label}' to issue #{issue_number}: {e}", flush=True)
+        return False
+
+
+def close_issue_api(issue_number):
+    """Close a GitHub issue."""
+    import requests
+    
+    if not GITHUB_TOKEN or not issue_number:
+        return False
+    
+    try:
+        url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}"
+        resp = requests.patch(
+            url,
+            headers=github_headers(),
+            json={"state": "closed"},
+            timeout=15
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"[ISSUE] Failed to close issue #{issue_number}: {e}", flush=True)
+        return False
+
+
+def remove_label_api(issue_number, label):
+    """Remove a label from a GitHub issue."""
+    import requests
+    
+    if not GITHUB_TOKEN or not issue_number:
+        return False
+    
+    try:
+        url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}/labels/{label}"
+        resp = requests.delete(url, headers=github_headers(), timeout=15)
+        return resp.status_code in [200, 204]
+    except Exception as e:
+        print(f"[LABEL] Failed to remove '{label}' from issue #{issue_number}: {e}", flush=True)
         return False
 
 # =============================================================================
@@ -1475,6 +1521,78 @@ def handle_pr_review_trigger(pr_number, action):
         print(f"[WALLET-GATE] PR #{pr_number} blocked — no wallet in PR body", flush=True)
         return jsonify({"message": "Wallet required in PR body"}), 200
     
+    # === STAKE VERIFICATION GATE ===
+    # Contributors must stake a % of the bounty to escrow before AI review
+    stake_tx, stake_error = extract_stake_tx_from_pr_body(pr_body)
+    if stake_error:
+        # No stake TX found — check if this bounty requires staking
+        linked_issue = get_linked_issue_number(pr_body)
+        bounty_amount = get_bounty_amount_from_issue(linked_issue) if linked_issue else None
+        
+        if bounty_amount and bounty_amount >= 500:
+            stake_required = int(bounty_amount * STAKE_PERCENTAGE / 100)
+            comment = (
+                f"## 💰 Stake Required\n\n"
+                f"This bounty requires a {STAKE_PERCENTAGE}% stake ({stake_required:,} WATT) before AI review.\n\n"
+                f"**To stake:**\n"
+                f"1. Send **{stake_required:,} WATT** to escrow wallet: `{ESCROW_WALLET}`\n"
+                f"2. Include memo: `stake:{linked_issue}`\n"
+                f"3. Add to your PR description: `**Stake TX**: <your_tx_signature>`\n"
+                f"4. Push a commit to re-trigger review.\n\n"
+                f"Your stake is returned when your PR is merged or if all reviews are exhausted.\n\n"
+                f"— WattCoin Automated Review"
+            )
+            post_github_comment(pr_number, comment)
+            
+            log_security_event("pr_blocked_no_stake", {
+                "pr_number": pr_number,
+                "author": pr_author,
+                "bounty_amount": bounty_amount,
+                "stake_required": stake_required
+            })
+            
+            print(f"[STAKE-GATE] PR #{pr_number} blocked — no stake TX (requires {stake_required:,} WATT)", flush=True)
+            return jsonify({"message": "Stake required in PR body"}), 200
+        else:
+            # No bounty found or amount too low — skip stake gate
+            print(f"[STAKE-GATE] PR #{pr_number} — no bounty linked or amount < 500, skipping stake", flush=True)
+    else:
+        # Stake TX provided — verify on-chain
+        linked_issue = get_linked_issue_number(pr_body)
+        bounty_amount = get_bounty_amount_from_issue(linked_issue) if linked_issue else None
+        
+        if bounty_amount and bounty_amount >= 500:
+            stake_required = int(bounty_amount * STAKE_PERCENTAGE / 100)
+            
+            verified, err_code, err_msg = verify_stake_payment(stake_tx, wallet, stake_required)
+            
+            if not verified:
+                comment = (
+                    f"## ❌ Stake Verification Failed\n\n"
+                    f"**Error:** {err_msg}\n\n"
+                    f"**Required:** {stake_required:,} WATT to escrow `{ESCROW_WALLET}` with memo `stake:{linked_issue}`\n\n"
+                    f"Fix the stake transaction and update your PR description, then push to re-trigger.\n\n"
+                    f"— WattCoin Automated Review"
+                )
+                post_github_comment(pr_number, comment)
+                
+                log_security_event("stake_verification_failed", {
+                    "pr_number": pr_number,
+                    "author": pr_author,
+                    "stake_tx": stake_tx,
+                    "error_code": err_code,
+                    "error_msg": err_msg
+                })
+                
+                print(f"[STAKE-GATE] PR #{pr_number} — stake verification failed: {err_code}", flush=True)
+                return jsonify({"message": "Stake verification failed", "error": err_code}), 200
+            
+            # Stake verified — record it for tracking
+            record_stake(pr_number, wallet, stake_tx, stake_required, linked_issue)
+            print(f"[STAKE-GATE] PR #{pr_number} — stake verified: {stake_required:,} WATT", flush=True)
+        else:
+            print(f"[STAKE-GATE] PR #{pr_number} — stake TX provided but no bounty linked, skipping verification", flush=True)
+    
     # === CONTENT SECURITY GATE ===
     # Scans PR diff for wallet injection, fabricated mechanisms, internal URL leaks
     try:
@@ -1601,6 +1719,25 @@ def handle_pr_review_trigger(pr_number, action):
                 print(f"[RATE-LIMIT] PR #{pr_number} — auto-closed (all {MAX_REVIEWS_PER_PR} reviews used)", flush=True)
             except Exception as e:
                 print(f"[RATE-LIMIT] PR #{pr_number} — failed to auto-close: {e}", flush=True)
+            
+            # === STAKE RETURN ON EXHAUSTION ===
+            stake_info = get_stake_info(pr_number)
+            if stake_info and stake_info.get("status") == "active":
+                try:
+                    stake_ok, stake_result = return_stake(pr_number, reason="exhausted")
+                    if stake_ok:
+                        print(f"[STAKE] PR #{pr_number} — stake returned on exhaustion: {stake_info.get('amount', 0):,} WATT", flush=True)
+                        post_github_comment(pr_number, f"💰 **Stake returned:** {stake_info.get('amount', 0):,} WATT → `{wallet[:8]}...{wallet[-8:]}` ([TX](https://solscan.io/tx/{stake_result}))\n\nYour stake has been returned because all review attempts were used.")
+                    else:
+                        print(f"[STAKE] PR #{pr_number} — stake return failed on exhaustion: {stake_result}", flush=True)
+                        notify_discord(
+                            "⚠️ Stake Return Failed",
+                            f"PR #{pr_number} exhausted reviews but stake return failed: {stake_result}",
+                            color=0xFFA500,
+                            fields={"PR": f"#{pr_number}", "Author": pr_author, "Stake": f"{stake_info.get('amount', 0):,} WATT"}
+                        )
+                except Exception as e:
+                    print(f"[STAKE] PR #{pr_number} — stake return error on exhaustion: {e}", flush=True)
         else:
             print(f"[RATE-LIMIT] PR #{pr_number} — AI review blocked by cooldown", flush=True)
         return jsonify({"message": "Rate limited", "pr": pr_number}), 200
@@ -1922,20 +2059,164 @@ def github_webhook():
         else:
             return jsonify({"message": f"Internal repo — ignoring action: {action}"}), 200
 
-    # Handle issues events — bounty creation notifications
+    # Handle issues events — bounty evaluation + creation
     if event_type == 'issues':
         issue_action = payload.get("action")
         issue = payload.get("issue", {})
         labels = [l.get("name", "").lower() for l in issue.get("labels", [])]
         
-        # Notify on bounty-labeled issues (opened only — labeled causes duplicates)
-        # Skip [SOLUTION:] issues — SwarmSolve has its own notification system
-        if issue_action == "opened" and "bounty" in labels and not issue.get("title", "").startswith("[SOLUTION"):
+        # Skip [SOLUTION:] issues — SwarmSolve has its own system
+        if issue.get("title", "").startswith("[SOLUTION"):
+            return jsonify({"message": "SwarmSolve issue — skipping"}), 200
+        
+        # === BOUNTY-REQUEST EVALUATION (new issues with bounty-request label) ===
+        if issue_action == "opened" and "bounty-request" in labels:
+            issue_title = issue.get("title", "Untitled")
+            issue_number = issue.get("number")
+            issue_body = issue.get("body", "") or ""
+            issue_author = issue.get("user", {}).get("login", "unknown")
+            
+            print(f"[BOUNTY-EVAL:{request_id}] Evaluating bounty request: Issue #{issue_number} by @{issue_author}", flush=True)
+            
+            # Check if author is banned
+            if is_banned(issue_author):
+                post_github_comment(issue_number, "🚫 **Bounty request rejected** — author is banned from the bounty system.")
+                close_issue_api(issue_number)
+                return jsonify({"message": "Banned user bounty request rejected"}), 200
+            
+            # Duplicate detection — check open bounty issues for similar titles
+            try:
+                import requests as req
+                open_issues_resp = req.get(
+                    f"https://api.github.com/repos/{REPO}/issues?labels=bounty&state=open&per_page=100",
+                    headers=github_headers(), timeout=15
+                )
+                if open_issues_resp.status_code == 200:
+                    existing_issues = [{"title": i["title"], "number": i["number"]} for i in open_issues_resp.json()]
+                    from bounty_evaluator import check_duplicate_issues
+                    is_dup, dup_issue, dup_reason = check_duplicate_issues(issue_title, existing_issues)
+                    if is_dup:
+                        post_github_comment(issue_number,
+                            f"❌ **Bounty request rejected — duplicate detected**\n\n{dup_reason}\n\n"
+                            f"Please check existing bounties before submitting: https://github.com/{REPO}/labels/bounty"
+                        )
+                        close_issue_api(issue_number)
+                        notify_discord(
+                            "🚫 Duplicate Bounty Request Rejected",
+                            f"Issue #{issue_number} by @{issue_author} — {dup_reason}",
+                            color=0xFF0000,
+                            fields={"Issue": f"#{issue_number}", "Author": f"@{issue_author}"}
+                        )
+                        print(f"[BOUNTY-EVAL:{request_id}] Duplicate detected: Issue #{issue_number}", flush=True)
+                        return jsonify({"message": "Duplicate bounty request"}), 200
+            except Exception as e:
+                print(f"[BOUNTY-EVAL:{request_id}] Duplicate check error (non-fatal): {e}", flush=True)
+            
+            # Run AI evaluation
+            try:
+                from bounty_evaluator import evaluate_bounty_request, format_bounty_body
+                eval_result = evaluate_bounty_request(issue_title, issue_body, [l for l in labels])
+                
+                if eval_result.get("decision") == "ERROR":
+                    print(f"[BOUNTY-EVAL:{request_id}] AI evaluation error: {eval_result.get('error')}", flush=True)
+                    post_github_comment(issue_number,
+                        "⚠️ **Bounty evaluation temporarily unavailable.** An admin will review this request manually."
+                    )
+                    return jsonify({"message": "Evaluation error", "error": eval_result.get("error")}), 200
+                
+                if eval_result.get("decision") == "APPROVE":
+                    bounty_amount = eval_result.get("amount", 0)
+                    suggested_title = eval_result.get("suggested_title", f"[BOUNTY: {bounty_amount:,} WATT] {issue_title}")
+                    suggested_body = eval_result.get("suggested_body", "")
+                    
+                    # Format body with staking info
+                    formatted_body = format_bounty_body(suggested_body or issue_body, bounty_amount, issue_number)
+                    
+                    # Update issue title and body
+                    try:
+                        import requests as req
+                        update_resp = req.patch(
+                            f"https://api.github.com/repos/{REPO}/issues/{issue_number}",
+                            headers=github_headers(),
+                            json={
+                                "title": suggested_title,
+                                "body": formatted_body
+                            },
+                            timeout=15
+                        )
+                        if update_resp.status_code != 200:
+                            print(f"[BOUNTY-EVAL] Failed to update issue #{issue_number}: {update_resp.status_code}", flush=True)
+                    except Exception as e:
+                        print(f"[BOUNTY-EVAL] Failed to update issue #{issue_number}: {e}", flush=True)
+                    
+                    # Replace bounty-request label with bounty
+                    try:
+                        remove_label_api(issue_number, "bounty-request")
+                        add_issue_label(issue_number, "bounty")
+                    except Exception as e:
+                        print(f"[BOUNTY-EVAL] Label update failed: {e}", flush=True)
+                    
+                    # Post approval comment
+                    stake_amount = int(bounty_amount * STAKE_PERCENTAGE / 100)
+                    post_github_comment(issue_number,
+                        f"✅ **Bounty Approved — {bounty_amount:,} WATT**\n\n"
+                        f"AI Evaluation: **{eval_result.get('score', 0)}/10** ({eval_result.get('confidence', 'N/A')})\n\n"
+                        f"**To claim this bounty:**\n"
+                        f"1. Stake {STAKE_PERCENTAGE}% ({stake_amount:,} WATT) to escrow: `{ESCROW_WALLET}` with memo `stake:{issue_number}`\n"
+                        f"2. Submit a PR referencing this issue with `Closes #{issue_number}`\n"
+                        f"3. Include in your PR body:\n"
+                        f"   - `**Payout Wallet**: <your_address>`\n"
+                        f"   - `**Stake TX**: <your_stake_tx_signature>`\n\n"
+                        f"Your stake is returned when your PR is merged or if all reviews are exhausted.\n\n"
+                        f"— WattCoin Autonomous Bounty System"
+                    )
+                    
+                    notify_discord(
+                        "📋 Bounty Approved",
+                        f"**{suggested_title[:120]}**\nhttps://github.com/{REPO}/issues/{issue_number}",
+                        color=0x00FF00,
+                        fields={"Issue": f"#{issue_number}", "Bounty": f"{bounty_amount:,} WATT", "Score": f"{eval_result.get('score', 0)}/10", "Author": f"@{issue_author}"}
+                    )
+                    
+                    print(f"[BOUNTY-EVAL:{request_id}] APPROVED: Issue #{issue_number} — {bounty_amount:,} WATT", flush=True)
+                
+                else:
+                    # REJECTED
+                    reasoning = eval_result.get("reasoning", "Did not meet evaluation criteria.")
+                    post_github_comment(issue_number,
+                        f"❌ **Bounty Request Rejected**\n\n"
+                        f"AI Evaluation: **{eval_result.get('score', 0)}/10** ({eval_result.get('confidence', 'N/A')})\n\n"
+                        f"**Reason:** {reasoning}\n\n"
+                        f"If you believe this was evaluated incorrectly, you can refine the issue description and resubmit.\n\n"
+                        f"— WattCoin Autonomous Bounty System"
+                    )
+                    close_issue_api(issue_number)
+                    
+                    notify_discord(
+                        "❌ Bounty Request Rejected",
+                        f"Issue #{issue_number} by @{issue_author} — Score: {eval_result.get('score', 0)}/10",
+                        color=0xFF0000,
+                        fields={"Issue": f"#{issue_number}", "Author": f"@{issue_author}", "Score": f"{eval_result.get('score', 0)}/10"}
+                    )
+                    
+                    print(f"[BOUNTY-EVAL:{request_id}] REJECTED: Issue #{issue_number} — score {eval_result.get('score', 0)}/10", flush=True)
+            
+            except Exception as e:
+                import traceback
+                print(f"[BOUNTY-EVAL:{request_id}] Evaluation crash: {e}\n{traceback.format_exc()}", flush=True)
+                post_github_comment(issue_number,
+                    "⚠️ **Bounty evaluation encountered an error.** An admin will review this request manually."
+                )
+            
+            elapsed = time.time() - start_time
+            return jsonify({"message": f"Bounty evaluation processed for Issue #{issue.get('number')}"}), 200
+        
+        # === BOUNTY NOTIFICATION (existing bounty-labeled issues opened directly) ===
+        if issue_action == "opened" and "bounty" in labels:
             issue_title = issue.get("title", "Untitled")
             issue_number = issue.get("number")
             issue_body = issue.get("body", "") or ""
             
-            # Try to extract WATT amount from body (common format: "XX,XXX WATT" or "XXXXX WATT")
             import re
             watt_match = re.search(r'([\d,]+)\s*WATT', issue_body, re.IGNORECASE)
             watt_str = watt_match.group(1).replace(",", "") if watt_match else None
@@ -2131,6 +2412,25 @@ def github_webhook():
         post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
 
         queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
+
+        # === STAKE RETURN ON MERGE ===
+        stake_info = get_stake_info(pr_number)
+        if stake_info and stake_info.get("status") == "active":
+            try:
+                stake_ok, stake_result = return_stake(pr_number, reason="merged")
+                if stake_ok:
+                    print(f"[STAKE] PR #{pr_number} — stake returned on merge: {stake_info.get('amount', 0):,} WATT (TX: {stake_result})", flush=True)
+                    post_github_comment(pr_number, f"💰 **Stake returned:** {stake_info.get('amount', 0):,} WATT → `{wallet[:8]}...{wallet[-8:]}` ([TX](https://solscan.io/tx/{stake_result}))")
+                else:
+                    print(f"[STAKE] PR #{pr_number} — stake return failed: {stake_result}", flush=True)
+                    notify_discord(
+                        "⚠️ Stake Return Failed",
+                        f"PR #{pr_number} merged but stake return failed: {stake_result}",
+                        color=0xFFA500,
+                        fields={"PR": f"#{pr_number}", "Wallet": truncate_wallet(wallet), "Stake": f"{stake_info.get('amount', 0):,} WATT"}
+                    )
+            except Exception as e:
+                print(f"[STAKE] PR #{pr_number} — stake return error: {e}", flush=True)
 
         # Activity feed: PR merged + payment queued
         pr_title = pr.get("title", "Untitled")

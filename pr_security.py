@@ -656,3 +656,303 @@ def verify_github_signature(payload_body, signature_header, secret):
 
 
 
+
+# =============================================================================
+# STAKING — Bounty Stake Verification & Return (v4.0.0)
+# =============================================================================
+
+ESCROW_WALLET = os.getenv("ESCROW_WALLET_ADDRESS", "5nZhxQksaj7pVWgET7UFSPjN7BDBYWWw3ZdL9AmADvkZ")
+WATT_TOKEN_MINT = os.getenv("WATT_TOKEN_MINT", "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump")
+SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://solana.publicnode.com")
+STAKE_PERCENTAGE = int(os.getenv("BOUNTY_STAKE_PERCENTAGE", "10"))
+STAKE_TX_MAX_AGE = int(os.getenv("STAKE_TX_MAX_AGE_SECONDS", "86400"))  # 24 hours
+
+
+def extract_stake_tx_from_pr_body(pr_body):
+    """
+    Extract stake transaction signature from PR body.
+    Expected format: **Stake TX**: <signature>
+    Returns: (tx_signature or None, error_message or None)
+    """
+    if not pr_body:
+        return None, "PR body is empty"
+    
+    patterns = [
+        r'\*\*Stake TX\*\*:\s*`?([A-Za-z0-9]{64,100})`?',           # **Stake TX**: sig
+        r'\*\*Stake\s+TX\s*\([^)]*\)\*?\*?:?\s*`?([A-Za-z0-9]{64,100})`?',  # **Stake TX (Solana):** sig
+        r'Stake\s+TX:\s*`?([A-Za-z0-9]{64,100})`?',                  # Stake TX: sig
+        r'[Ss]take\s+[Tt](?:x|X|ransaction)[^\\n]{0,30}?`?([A-Za-z0-9]{64,100})`?',  # Flexible
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, pr_body)
+        if match:
+            sig = match.group(1).strip()
+            # Basic validation: Solana TX sigs are base58, typically 87-88 chars
+            if len(sig) >= 64 and len(sig) <= 100:
+                return sig, None
+    
+    return None, "Missing stake TX in PR body. Required format: **Stake TX**: <your_stake_tx_signature>"
+
+
+def get_bounty_amount_from_issue(issue_number):
+    """
+    Extract bounty WATT amount from a GitHub issue title or body.
+    Looks for patterns like [BOUNTY: 5,000 WATT] or "5,000 WATT" in body.
+    Returns: amount (int) or None
+    """
+    import requests as req
+    
+    REPO = os.getenv("GITHUB_REPO", "WattCoin-Org/wattcoin")
+    token = os.getenv("GITHUB_TOKEN", "")
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"} if token else {}
+    
+    try:
+        resp = req.get(
+            f"https://api.github.com/repos/{REPO}/issues/{issue_number}",
+            headers=headers, timeout=10
+        )
+        if resp.status_code != 200:
+            return None
+        
+        issue = resp.json()
+        title = issue.get("title", "")
+        body = issue.get("body", "") or ""
+        
+        # Try title first: [BOUNTY: 5,000 WATT]
+        title_match = re.search(r'\[BOUNTY:\s*([\d,]+)\s*WATT\]', title, re.IGNORECASE)
+        if title_match:
+            return int(title_match.group(1).replace(',', ''))
+        
+        # Try body: "X,XXX WATT" or "XXXXX WATT"
+        body_match = re.search(r'([\d,]+)\s*WATT', body, re.IGNORECASE)
+        if body_match:
+            amount = int(body_match.group(1).replace(',', ''))
+            if amount >= 500:  # Minimum bounty
+                return amount
+        
+        return None
+    except Exception:
+        return None
+
+
+def get_linked_issue_number(pr_body):
+    """
+    Extract linked issue number from PR body.
+    Looks for 'Closes #123', 'Fixes #123', 'Issue #123', etc.
+    Returns: issue_number (int) or None
+    """
+    if not pr_body:
+        return None
+    
+    patterns = [
+        r'(?:Closes|Fixes|Resolves)\s+#(\d+)',
+        r'Issue\s*#(\d+)',
+        r'Bounty\s*#(\d+)',
+        r'#(\d+)',  # Fallback: any issue reference
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, pr_body, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    
+    return None
+
+
+def verify_stake_payment(tx_signature, contributor_wallet, expected_amount):
+    """
+    Verify that a stake payment was sent to the escrow wallet.
+    
+    Checks:
+    1. TX exists and is confirmed
+    2. Escrow wallet received the expected WATT amount
+    3. Contributor wallet was the sender
+    4. TX is recent enough (within STAKE_TX_MAX_AGE)
+    
+    Returns: (success: bool, error_code: str, error_message: str)
+    """
+    import requests as req
+    
+    if not tx_signature or len(tx_signature) < 64:
+        return False, "invalid_sig", "Invalid transaction signature format"
+    
+    # Check if stake TX was already used for another PR
+    stake_data = _load_stake_data()
+    for pr, info in stake_data.items():
+        if info.get("stake_tx") == tx_signature and info.get("status") in ("active", "returned"):
+            return False, "tx_already_used", f"Stake TX already used for PR #{pr}"
+    
+    # Fetch transaction with retries
+    tx = None
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            resp = req.post(SOLANA_RPC_URL, json={
+                "jsonrpc": "2.0", "id": 1,
+                "method": "getTransaction",
+                "params": [tx_signature, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
+            }, timeout=15)
+            result = resp.json().get("result")
+            if result:
+                tx = result
+                break
+        except Exception:
+            pass
+        if attempt < max_retries - 1:
+            time.sleep(3)
+    
+    if not tx:
+        return False, "tx_not_found", f"Transaction not found on chain after {max_retries} attempts"
+    
+    # Check for errors
+    meta = tx.get("meta", {})
+    if meta.get("err"):
+        return False, "tx_failed", "Transaction failed on chain"
+    
+    # Check block time (must be recent)
+    block_time = tx.get("blockTime")
+    if not block_time:
+        return False, "tx_not_confirmed", "Transaction not yet confirmed"
+    
+    tx_age = time.time() - block_time
+    if tx_age > STAKE_TX_MAX_AGE:
+        return False, "tx_too_old", f"Stake TX older than {STAKE_TX_MAX_AGE // 3600} hours"
+    
+    # Verify using pre/post token balances
+    pre_balances = meta.get("preTokenBalances", [])
+    post_balances = meta.get("postTokenBalances", [])
+    
+    # Build pre-balance lookup
+    pre_by_index = {}
+    for bal in pre_balances:
+        if bal.get("mint") == WATT_TOKEN_MINT:
+            idx = bal.get("accountIndex")
+            owner = bal.get("owner")
+            amount = float(bal.get("uiTokenAmount", {}).get("uiAmount", 0) or 0)
+            pre_by_index[idx] = {"owner": owner, "amount": amount}
+    
+    # Check post-balances for escrow receipt and contributor send
+    escrow_received = 0
+    contributor_sent = False
+    
+    for bal in post_balances:
+        if bal.get("mint") != WATT_TOKEN_MINT:
+            continue
+        
+        idx = bal.get("accountIndex")
+        owner = bal.get("owner")
+        post_amount = float(bal.get("uiTokenAmount", {}).get("uiAmount", 0) or 0)
+        pre_amount = pre_by_index.get(idx, {}).get("amount", 0)
+        change = post_amount - pre_amount
+        
+        # Escrow wallet received WATT
+        if owner == ESCROW_WALLET:
+            escrow_received = change
+        
+        # Contributor wallet sent WATT (negative change)
+        if owner == contributor_wallet:
+            if change < 0:
+                contributor_sent = True
+    
+    if escrow_received < expected_amount - 0.01:  # Allow tiny rounding
+        return False, "insufficient_stake", f"Escrow received {escrow_received:.0f} WATT, expected {expected_amount}"
+    
+    if not contributor_sent:
+        return False, "wrong_sender", "Contributor wallet was not the sender of this transaction"
+    
+    return True, None, None
+
+
+def record_stake(pr_number, contributor_wallet, stake_tx, stake_amount, issue_number):
+    """Record an active stake for tracking and return."""
+    stake_data = _load_stake_data()
+    stake_data[str(pr_number)] = {
+        "wallet": contributor_wallet,
+        "stake_tx": stake_tx,
+        "amount": stake_amount,
+        "issue_number": issue_number,
+        "status": "active",
+        "recorded_at": datetime.now().isoformat(),
+        "returned_at": None,
+        "return_tx": None
+    }
+    _save_stake_data(stake_data)
+
+
+def return_stake(pr_number, reason="merged"):
+    """
+    Return stake to contributor.
+    
+    Args:
+        pr_number: PR number
+        reason: 'merged' (with bounty), 'exhausted' (all reviews used), 'admin_close'
+    
+    Returns: (success, tx_signature or error_message)
+    """
+    stake_data = _load_stake_data()
+    stake = stake_data.get(str(pr_number))
+    
+    if not stake:
+        return False, "No stake found for this PR"
+    
+    if stake.get("status") == "returned":
+        return False, f"Stake already returned (TX: {stake.get('return_tx', 'unknown')})"
+    
+    wallet = stake.get("wallet")
+    amount = stake.get("amount", 0)
+    
+    if not wallet or amount <= 0:
+        return False, "Invalid stake data"
+    
+    try:
+        from api_swarmsolve import send_watt_from_escrow
+        memo = f"WattCoin Stake Return | PR #{pr_number} | {reason} | {amount:,} WATT"
+        tx_sig = send_watt_from_escrow(wallet, amount, memo=memo)
+        
+        # Update stake record
+        stake["status"] = "returned"
+        stake["returned_at"] = datetime.now().isoformat()
+        stake["return_tx"] = tx_sig
+        stake["return_reason"] = reason
+        _save_stake_data(stake_data)
+        
+        return True, tx_sig
+    except Exception as e:
+        log_security_event("stake_return_failed", {
+            "pr_number": pr_number,
+            "wallet": wallet,
+            "amount": amount,
+            "reason": reason,
+            "error": str(e)
+        })
+        return False, f"Stake return failed: {str(e)}"
+
+
+def get_stake_info(pr_number):
+    """Get stake info for a PR. Returns dict or None."""
+    stake_data = _load_stake_data()
+    return stake_data.get(str(pr_number))
+
+
+def _load_stake_data():
+    """Load stake tracking data."""
+    filepath = os.path.join(os.getenv("DATA_DIR", "data"), "bounty_stakes.json")
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        pass
+    return {}
+
+
+def _save_stake_data(data):
+    """Save stake tracking data."""
+    filepath = os.path.join(os.getenv("DATA_DIR", "data"), "bounty_stakes.json")
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+    except IOError as e:
+        print(f"[STAKE] Failed to save stake data: {e}", flush=True)
