@@ -1,0 +1,15 @@
+[Unit]
+Description=WattCoin Pi Energy Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/wattcoin/pi/energy_monitor
+Environment=WATT_SIGN_CMD=solana-keygen sign --keypair /etc/wattcoin/id.json
+ExecStart=/opt/wattcoin/pi/energy_monitor/.venv/bin/python monitor.py --base-url https://api.wattcoin.org --wallet YOUR_WALLET --source kasa --kasa-host 192.168.1.100 --interval 60
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
