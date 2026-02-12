@@ -3213,6 +3213,30 @@ def process_payment_queue():
                 post_github_comment(pr_number, comment)
             except Exception as comment_err:
                 print(f"[QUEUE] Warning: Failed to post PR comment for #{pr_number}: {comment_err}", flush=True)
+            
+            # Discord notification + reputation + ledger + issue label
+            try:
+                from api_webhooks import notify_discord, truncate_wallet, update_reputation, \
+                    record_completed_payout, add_issue_label
+                notify_discord(
+                    "✅ Payment Sent",
+                    f"PR #{pr_number} bounty paid successfully.",
+                    color=0x00FF00,
+                    fields={"Amount": f"{amount:,} WATT", "Wallet": f"{wallet[:8]}...{wallet[-8:]}",
+                            "TX": f"[Solscan](https://solscan.io/tx/{tx_signature})"}
+                )
+                author = payment.get("author")
+                if author:
+                    update_reputation(author, "merge", pr_number, watt_earned=amount)
+                record_completed_payout(
+                    pr_number, wallet, amount, tx_signature,
+                    bounty_issue_id=bounty_issue_id, review_score=review_score,
+                    author=payment.get("author")
+                )
+                if bounty_issue_id:
+                    add_issue_label(bounty_issue_id, "paid")
+            except Exception as post_err:
+                print(f"[QUEUE] Warning: Post-payment actions failed for #{pr_number}: {post_err}", flush=True)
         else:
             payment["status"] = "failed"
             payment["error"] = error
