@@ -1413,7 +1413,10 @@ def health():
         data_files = ['nodes.json', 'tasks.json', 'bounties.json']
         data_status = {}
         for file_name in data_files:
-            file_path = os.path.join(DATA_DIR, file_name) if 'DATA_DIR' in globals() else file_name
+            try:
+                file_path = os.path.join(DATA_DIR, file_name)
+            except NameError:
+                file_path = file_name
             if os.path.exists(file_path) and os.access(file_path, os.R_OK):
                 data_status[file_name] = 'accessible'
             else:
@@ -1445,16 +1448,12 @@ def health():
         checks['discord_webhook'] = {'status': 'unhealthy', 'error': str(e)}
         overall_status = 'degraded'
     
-    # Check 3: AI API key present
+    # Check 3: AI API configured (without exposing key details)
     try:
-        ai_keys = {
-            'anthropic': bool(os.getenv('ANTHROPIC_API_KEY')),
-            'openai': bool(os.getenv('OPENAI_API_KEY'))
-        }
-        ai_configured = any(ai_keys.values())
+        ai_configured = bool(os.getenv('ANTHROPIC_API_KEY')) or bool(os.getenv('OPENAI_API_KEY'))
         checks['ai_api'] = {
             'status': 'healthy' if ai_configured else 'degraded',
-            'keys': ai_keys
+            'configured': ai_configured
         }
         if not ai_configured:
             overall_status = 'degraded'
@@ -1464,7 +1463,7 @@ def health():
     
     # Check 4: Active nodes count
     try:
-        active_nodes_list = get_active_nodes() if 'get_active_nodes' in globals() else []
+        active_nodes_list = get_active_nodes()
         active_nodes_count = len(active_nodes_list)
         checks['active_nodes'] = {
             'status': 'healthy' if active_nodes_count > 0 else 'degraded',
@@ -1479,7 +1478,10 @@ def health():
     # Check 5: Open tasks count
     try:
         open_tasks_count = 0
-        tasks_file = os.path.join(DATA_DIR, 'tasks.json') if 'DATA_DIR' in globals() else 'tasks.json'
+        try:
+            tasks_file = os.path.join(DATA_DIR, 'tasks.json')
+        except NameError:
+            tasks_file = 'tasks.json'
         if os.path.exists(tasks_file):
             with open(tasks_file, 'r') as f:
                 tasks = json.load(f)
@@ -1496,21 +1498,19 @@ def health():
     response_time_ms = int((time.time() - start_time) * 1000)
     
     # Build response (maintaining backward compatibility)
+    # Map new status values to legacy 'ok' for compatibility
+    legacy_status = 'ok' if overall_status == 'healthy' else overall_status
+    
     return jsonify({
-        'status': overall_status,
+        'status': legacy_status,
+        'ok': overall_status == 'healthy',  # Backward compatibility flag
         'version': '3.4.0',
         'timestamp': datetime.utcnow().isoformat(),
         'response_time_ms': response_time_ms,
         'checks': checks,
-        'ai': bool(ai_client),
-        'claude': bool(claude_client),
-        'proxy': True,
-        'admin': True,
         'active_nodes': checks['active_nodes']['count']
     })
 
-
-@app.route
 
 @app.route('/api/v1/pricing', methods=['GET'])
 def unified_pricing():
