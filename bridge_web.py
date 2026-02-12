@@ -91,11 +91,17 @@ CORS(app, origins=[
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+# Configurable public endpoint rate limits
+PUBLIC_RATE_LIMIT_PER_MIN = os.getenv("PUBLIC_RATE_LIMIT_PER_MIN", "60")
+PUBLIC_RATE_LIMIT = f"{PUBLIC_RATE_LIMIT_PER_MIN} per minute"
+GLOBAL_RATE_LIMIT_HOURLY = os.getenv("GLOBAL_RATE_LIMIT_HOURLY", "1000 per hour")
+GLOBAL_RATE_LIMIT_MINUTE = os.getenv("GLOBAL_RATE_LIMIT_MINUTE", "100 per minute")
+
 # Initialize Flask-Limiter with Redis storage (fallback to memory if Redis unavailable)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per hour", "100 per minute"],  # Global defaults
+    default_limits=[GLOBAL_RATE_LIMIT_HOURLY, GLOBAL_RATE_LIMIT_MINUTE],
     storage_uri=os.getenv("REDIS_URL", "memory://"),  # Use Redis if available, else in-memory
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
@@ -106,13 +112,21 @@ limiter = Limiter(
 @app.errorhandler(429)
 def ratelimit_handler(e):
     logger.warning(f"Rate limit exceeded: {request.remote_addr} - {request.path}")
-    return jsonify({
+    retry_after = getattr(e, "retry_after", None)
+    if retry_after is None and hasattr(e, "description"):
+        retry_after = e.description
+    if retry_after is None:
+        retry_after = 60
+
+    response = jsonify({
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please slow down and try again later.",
-        "retry_after": e.description if hasattr(e, "description") else "60 seconds"
-    }), 429
+        "retry_after": retry_after
+    })
+    response.headers["Retry-After"] = str(retry_after)
+    return response, 429
 
-logger.info("Flask-Limiter initialized with default limits: 1000/hour, 100/minute")
+logger.info("Flask-Limiter initialized with defaults: %s, %s | public=%s", GLOBAL_RATE_LIMIT_HOURLY, GLOBAL_RATE_LIMIT_MINUTE, PUBLIC_RATE_LIMIT)
 
 # =============================================================================
 # REGISTER ADMIN BLUEPRINT
@@ -1397,6 +1411,7 @@ def proxy_moltbook():
 
 
 @app.route('/health')
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def health():
     data_dir = os.getenv('DATA_DIR', '/app/data')
     tasks_file = os.path.join(data_dir, 'tasks.json')
@@ -1434,6 +1449,7 @@ def health():
 
 
 @app.route('/api/v1/pricing', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def unified_pricing():
     """
     Unified pricing for all WattCoin paid services.
@@ -1472,6 +1488,7 @@ def unified_pricing():
 
 
 @app.route('/api/v1/bounty-stats', methods=['GET'])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 def bounty_stats():
     """
     Public bounty statistics for website.
