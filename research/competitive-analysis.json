@@ -1,0 +1,190 @@
+{
+  "generated_at": "2026-02-12T10:58:03.404003Z",
+  "source": "CoinGecko /coins/markets + project docs",
+  "projects": [
+    {
+      "project": "Bittensor",
+      "ticker": "TAO",
+      "coingecko_id": "bittensor",
+      "chain": "Subtensor (custom chain)",
+      "price_usd": 158.32,
+      "market_cap_usd": 1519518631,
+      "market_cap_rank": 53,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Decentralized AI subnet marketplace with token-incentivized model evaluation and mining.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Fetch.ai",
+      "ticker": "FET",
+      "coingecko_id": "fetch-ai",
+      "chain": "Ethereum/Cosmos ecosystem",
+      "price_usd": 0.161767,
+      "market_cap_usd": 368875830,
+      "market_cap_rank": 117,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Agent-oriented network and tooling for autonomous economic agents and AI workflows.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Render",
+      "ticker": "RENDER",
+      "coingecko_id": "render-token",
+      "chain": "Solana (migrated from Ethereum)",
+      "price_usd": 1.34,
+      "market_cap_usd": 692686281,
+      "market_cap_rank": 86,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "GPU rendering/inference network matching compute demand with distributed suppliers.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Akash",
+      "ticker": "AKT",
+      "coingecko_id": "akash-network",
+      "chain": "Cosmos",
+      "price_usd": 0.328393,
+      "market_cap_usd": 93844093,
+      "market_cap_rank": 290,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Decentralized cloud compute marketplace with containerized workload deployment.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Render (legacy ticker alias)",
+      "ticker": "RNDR",
+      "coingecko_id": "render-token",
+      "chain": "Ethereum/Solana transition context",
+      "price_usd": 1.34,
+      "market_cap_usd": 692686281,
+      "market_cap_rank": 86,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Legacy ticker reference for Render ecosystem, often still used in market discussions.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Ocean Protocol",
+      "ticker": "OCEAN",
+      "coingecko_id": "ocean-protocol",
+      "chain": "Ethereum",
+      "price_usd": 0.105062,
+      "market_cap_usd": 21057520,
+      "market_cap_rank": 789,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Data economy protocol enabling data sharing/monetization with token incentives.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Nosana",
+      "ticker": "NOS",
+      "coingecko_id": "nosana",
+      "chain": "Solana",
+      "price_usd": 0.177077,
+      "market_cap_usd": 14745101,
+      "market_cap_rank": 948,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Solana-native marketplace for GPU and AI workload execution.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "Aethir (issue requested PRIME)",
+      "ticker": "PRIME",
+      "coingecko_id": "aethir",
+      "chain": "Arbitrum/Ethereum ecosystem",
+      "price_usd": 0.00621361,
+      "market_cap_usd": 108130918,
+      "market_cap_rank": 260,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Decentralized GPU cloud for gaming/AI enterprise compute workloads.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "NodeAI",
+      "ticker": "GPU",
+      "coingecko_id": "nodeai",
+      "chain": "Ethereum ecosystem",
+      "price_usd": 0.02812814,
+      "market_cap_usd": 2732649,
+      "market_cap_rank": 2060,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "AI compute token focused on decentralized GPU access and related tooling.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    },
+    {
+      "project": "io.net",
+      "ticker": "IO",
+      "coingecko_id": "io",
+      "chain": "Solana",
+      "price_usd": 0.105255,
+      "market_cap_usd": 29981358,
+      "market_cap_rank": 635,
+      "community_size": {
+        "twitter_followers": "N/A (collect manually from official X profiles)"
+      },
+      "what_it_does": "Distributed GPU aggregation and scheduling layer for AI compute jobs.",
+      "tokenomics_summary": "See official token docs for supply, burn, staking, and unlock schedules.",
+      "key_differentiator_vs_wattcoin": "Larger existing liquidity/community; WattCoin differentiates via bounty-native execution.",
+      "technical_architecture": "See protocol docs (chain-specific consensus + marketplace scheduling).",
+      "strengths": "Higher visibility and deeper exchange penetration.",
+      "weaknesses": "Narrative-driven volatility and competition for sustained utility demand."
+    }
+  ],
+  "notes": [
+    "Issue requests both RENDER and RNDR; report keeps both entries intentionally.",
+    "Community counts left as N/A placeholders for manual refresh to avoid stale/incorrect claims."
+  ]
+}
