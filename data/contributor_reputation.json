@@ -4,9 +4,15 @@
       "github": "divol89",
       "score": -40,
       "tier": "flagged",
-      "merged_prs": [79],
-      "rejected_prs": [72],
-      "reverted_prs": [79],
+      "merged_prs": [
+        79
+      ],
+      "rejected_prs": [
+        72
+      ],
+      "reverted_prs": [
+        79
+      ],
       "total_watt_earned": 0,
       "last_updated": "2026-02-06T13:20:00Z"
     },
@@ -14,7 +20,9 @@
       "github": "SudarshanSuryaprakash",
       "score": 25,
       "tier": "bronze",
-      "merged_prs": [70],
+      "merged_prs": [
+        70
+      ],
       "rejected_prs": [],
       "reverted_prs": [],
       "total_watt_earned": 15000,
@@ -24,7 +32,9 @@
       "github": "ohmygod20260203",
       "score": 10,
       "tier": "bronze",
-      "merged_prs": [75],
+      "merged_prs": [
+        75
+      ],
       "rejected_prs": [],
       "reverted_prs": [],
       "total_watt_earned": 0,
@@ -39,6 +49,19 @@
       "reverted_prs": [],
       "total_watt_earned": 0,
       "last_updated": "2026-02-06T00:00:00Z"
+    },
+    "chiang881": {
+      "github": "chiang881",
+      "score": 50,
+      "tier": "bronze",
+      "merged_prs": [
+        218,
+        204
+      ],
+      "rejected_prs": [],
+      "reverted_prs": [],
+      "total_watt_earned": 6500,
+      "last_updated": "2026-02-12T05:41:00Z"
     }
   }
 }

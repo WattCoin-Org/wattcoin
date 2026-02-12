@@ -47,6 +47,38 @@
       "paid_at": "2026-02-09T08:10:00Z",
       "review_score": 8,
       "payment_method": "auto_queue"
+    },
+    {
+      "id": 4,
+      "pr_number": 218,
+      "author": "chiang881",
+      "wallet": "HVLdjyDJCd7iwjLAkhAK1WPxuWfsDiiugbN8DMfoLbjP",
+      "amount": 1500,
+      "bounty_issue_id": 216,
+      "status": "paid",
+      "queued_at": "2026-02-12T05:33:37Z",
+      "approved_by": "admin",
+      "approved_at": "2026-02-12T05:41:00Z",
+      "tx_signature": "BmfKDeNS4gkf3ZerXKM8f3Y2nVwJm6YYfJ1t1CcyUWyt9qAGud3gvvXW1ZjefLLUijizjfTAhQVjQFYdGPjZ1Nh",
+      "paid_at": "2026-02-12T05:41:00Z",
+      "review_score": 9,
+      "payment_method": "admin_queue"
+    },
+    {
+      "id": 5,
+      "pr_number": 204,
+      "author": "chiang881",
+      "wallet": "HVLdjyDJCd7iwjLAkhAK1WPxuWfsDiiugbN8DMfoLbjP",
+      "amount": 5000,
+      "bounty_issue_id": 48,
+      "status": "paid",
+      "queued_at": "2026-02-12T05:37:35Z",
+      "approved_by": "admin",
+      "approved_at": "2026-02-12T05:41:00Z",
+      "tx_signature": "2gSNzAd3qfWFEyQGyYDUumVGbgRHcsRsTRzMepuCQ9qR9igmvigornqifDKna7Avg3hiqr7mZozXVBvtr8F9LyCj",
+      "paid_at": "2026-02-12T05:41:00Z",
+      "review_score": 9,
+      "payment_method": "admin_queue"
     }
   ]
 }
