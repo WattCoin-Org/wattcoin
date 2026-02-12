@@ -1,4 +1,5 @@
 """
+# Deploy trigger: force Railway rebuild 2026-02-12
 AI-Claude Bridge - Web Interface v2.2.0
 Human-in-the-loop AI collaboration for WattCoin project
 + Proxy endpoint for external API calls (Moltbook, etc.)
