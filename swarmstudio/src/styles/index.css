@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-bg text-text-primary font-sans;
+  }
+}
+
+@layer utilities {
+  .gradient-accent {
+    background: linear-gradient(135deg, #F59E0B 0%, #F97316 100%);
+  }
+  
+  .border-accent {
+    border-image: linear-gradient(135deg, #F59E0B 0%, #F97316 100%) 1;
+  }
+}
