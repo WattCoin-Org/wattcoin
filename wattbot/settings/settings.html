@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WattBot Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <h1>⚡ WattBot Settings</h1>
+  <p class="subtitle">Configure your AI provider, model, and wallet.</p>
+
+  <div class="field">
+    <label for="provider">Provider</label>
+    <select id="provider">
+      <option value="openai">OpenAI (GPT)</option>
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="xai">xAI (Grok)</option>
+      <option value="google">Google (Gemini)</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="ollama">Ollama (Local)</option>
+      <option value="custom">Custom OpenAI-Compatible</option>
+    </select>
+  </div>
+
+  <div class="field" id="field-apikey">
+    <label for="apikey">API Key</label>
+    <input type="password" id="apikey" placeholder="sk-...">
+    <p class="help" id="apikey-help"></p>
+  </div>
+
+  <div class="field hidden" id="field-baseurl">
+    <label for="baseurl">Base URL</label>
+    <input type="text" id="baseurl" placeholder="http://localhost:11434/v1">
+    <p class="help">OpenAI-compatible API endpoint</p>
+  </div>
+
+  <div class="field">
+    <label for="model">Model</label>
+    <div class="model-row">
+      <select id="model"></select>
+      <button class="btn-icon" id="btn-refresh" title="Fetch models from API">🔄</button>
+    </div>
+    <div style="margin-top:8px">
+      <input type="text" id="custom-model" placeholder="Or type a model name (overrides dropdown)">
+      <p class="help">Type any model string to override the dropdown — useful for new or unlisted models.</p>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-save" id="btn-save">Save Settings</button>
+    <button class="btn-test" id="btn-test">Test Connection</button>
+  </div>
+
+  <div id="status"></div>
+
+  <hr class="divider">
+
+  <div class="field">
+    <label>Agent Settings</label>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <label style="font-weight:normal;color:var(--text);font-size:13px;">Max steps per task:</label>
+      <input type="text" id="max-steps" value="100" style="width:60px;text-align:center;">
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field">
+    <label>🔗 Wallet Connection</label>
+    <p class="help" style="margin-bottom:8px">Connect Phantom wallet for WATT balance and ecosystem features, or enter a wallet address manually.</p>
+    <div id="wallet-status" class="wallet-status">
+      <span class="wallet-dot disconnected" id="wallet-dot"></span>
+      <span id="wallet-status-text">Not connected</span>
+    </div>
+    <div style="margin-top:8px">
+      <input type="text" id="wallet-address" placeholder="Manual wallet address (e.g., 7vvNkG3J...)">
+      <p class="help">If Phantom isn't available, paste your Solana wallet address here for balance features.</p>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

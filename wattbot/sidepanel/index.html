@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WattBot</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <span class="bolt">⚡</span> WattBot
+      <span class="version">v0.3.0</span>
+    </div>
+    <div class="header-actions">
+      <button id="btnWallet" class="wallet-btn" title="Wallet">
+        <span class="wallet-indicator" id="walletIndicator"></span>
+        💰
+      </button>
+      <button id="btnSettings" title="Settings">⚙️</button>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="active" data-tab="main">💬 Agent</button>
+    <button data-tab="history">📋 History</button>
+    <button data-tab="debug">🔧 Debug</button>
+  </div>
+
+  <!-- Main Agent View -->
+  <div class="view-panel active" id="view-main">
+    <div class="quick-actions">
+      <button class="quick-btn" data-task="Summarize this page in 3-4 bullet points">📝 Summarize</button>
+      <button class="quick-btn" data-task="Extract all email addresses from this page and copy them to clipboard">📧 Emails</button>
+      <button class="quick-btn" data-task="Extract all links from this page">🔗 Links</button>
+      <button class="quick-btn" data-task="Fill in any visible form fields with reasonable test data">📋 Fill Form</button>
+    </div>
+    <div class="quick-actions watt-actions">
+      <button class="quick-btn watt-btn" id="qaBounties" data-task="Navigate to https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aissue+is%3Aopen+label%3Abounty and list the open bounties with their WATT amounts">⚡ Bounties</button>
+      <button class="quick-btn watt-btn" id="qaTasks" data-task="Navigate to https://wattcoin.org/tasks and list all open tasks with their type, WATT reward, and deadline">⚡ Tasks</button>
+      <button class="quick-btn watt-btn" id="qaSwarmSolve" data-task="Navigate to https://wattcoin.org/swarmsolve and summarize the available solutions and how SwarmSolve works">⚡ SwarmSolve</button>
+      <button class="quick-btn watt-btn" id="qaWSI" data-task="Navigate to https://wattcoin.org/wsi and summarize the WSI distributed inference network status and how to participate">⚡ WSI</button>
+      <button class="quick-btn watt-btn" id="qaBlinks" data-task="Navigate to https://wattcoin.org/blinks and list the available Solana Blinks actions with their descriptions">⚡ Blinks</button>
+      <button class="quick-btn watt-btn" id="qaBalance" title="View WATT balance on Solscan">⚡ Balance</button>
+    </div>
+
+    <div class="chat-log" id="chatLog">
+      <div class="msg thinking">
+        ⚡ <strong>WattBot</strong> — AI Browser Agent<br>
+        Tell me what to do and I'll navigate the web for you.
+      </div>
+    </div>
+  </div>
+
+  <!-- History View -->
+  <div class="view-panel" id="view-history">
+    <div class="history-clear">
+      <button id="btnClearHistory">Clear History</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="history-empty">No task history yet.</div>
+    </div>
+  </div>
+
+  <!-- Debug View -->
+  <div class="view-panel" id="view-debug">
+    <div class="debug-panel" id="debugPanel">
+      <div class="debug-empty">Debug log will appear here when a task runs.</div>
+    </div>
+  </div>
+
+  <!-- Input Area (always visible) -->
+  <div class="input-area">
+    <!-- Collapsible System Prompt -->
+    <div class="prompt-section">
+      <button class="prompt-toggle" id="btnPromptToggle">🧠 Prompt <span id="promptIndicator"></span></button>
+      <div class="prompt-body" id="promptBody" style="display:none">
+        <textarea class="prompt-input" id="promptInput" placeholder="Set context before running a task...&#10;&#10;Examples:&#10;• You are a research assistant helping me stay current on AI&#10;• You are working on my WattCoin project&#10;• Summarize findings concisely, focus on key facts" rows="4"></textarea>
+        <div class="prompt-actions">
+          <button class="prompt-clear" id="btnPromptClear">Clear</button>
+        </div>
+      </div>
+    </div>
+    <div class="input-row">
+      <textarea class="task-input" id="taskInput" placeholder="Tell WattBot what to do...&#10;&#10;Examples: Search Google for AI news, Have a 3-reply conversation on Grok" rows="3"></textarea>
+      <div class="controls">
+        <button class="btn btn-run" id="btnRun">▶ Run</button>
+        <button class="btn btn-stop" id="btnStop" style="display:none">⏹ Stop</button>
+        <button class="btn btn-pause" id="btnPause" style="display:none">⏸</button>
+      </div>
+    </div>
+    <div class="input-options">
+      <label title="Sends a visual screenshot to the LLM each step — helps vision models understand layout and colors. Costs more tokens but improves accuracy on complex pages."><input type="checkbox" id="chkScreenshots"> 📸 Screenshots</label>
+      <span class="status-bar" id="statusBar"></span>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3>⚠️ Confirmation Required</h3>
+      <p id="confirmReason"></p>
+      <div class="action-preview" id="confirmAction"></div>
+      <div class="confirm-btns">
+        <button class="btn btn-allow" id="btnAllow">✅ Allow</button>
+        <button class="btn btn-deny" id="btnDeny">❌ Deny</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../core/prompts.js"></script>
+  <script src="../core/parser.js"></script>
+  <script src="../core/safety.js"></script>
+  <script src="../core/agent.js"></script>
+  <script src="../adapters/openai.js"></script>
+  <script src="../adapters/anthropic.js"></script>
+  <script src="wallet-helper.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
