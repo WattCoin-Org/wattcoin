@@ -1,0 +1,67 @@
+# WattNode Configuration
+# Copy to config.yaml and fill in your details
+
+# =============================================================================
+# REQUIRED: Your Solana wallet address
+# =============================================================================
+wallet: "YourSolanaWalletAddress..."
+
+# =============================================================================
+# Node Identity
+# =============================================================================
+# Name shown in the network (optional)
+name: "my-wattnode"
+
+# =============================================================================
+# Capabilities
+# What jobs this node can handle
+# =============================================================================
+capabilities:
+  - scrape        # Web scraping (default, no extra setup)
+  # - inference   # LLM inference (requires NVIDIA GPU + inference engine)
+
+# =============================================================================
+# WSI Inference Settings (requires NVIDIA GPU with ≥6GB VRAM)
+# Enable via the Inference tab in the GUI, or uncomment 'inference' above
+# =============================================================================
+inference_engine:
+  # Model to serve — must match the model other swarm nodes are hosting
+  model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+  # Number of transformer blocks to host (null = auto-detect from GPU VRAM)
+  # More blocks = more contribution = more WATT earned per query
+  # Llama 8B has 32 blocks total; 8GB GPU can serve ~20-25 blocks
+  num_blocks: null
+
+  # P2P port for swarm communication
+  port: 31330
+
+# =============================================================================
+# Legacy: Ollama Settings (fallback if distributed inference unavailable)
+# =============================================================================
+ollama:
+  url: "http://localhost:11434"
+  model: "llama2"  # or llama3, mistral, phi, etc.
+
+# =============================================================================
+# Timing
+# =============================================================================
+# How often to send heartbeat (seconds)
+heartbeat_interval: 60
+
+# How often to poll for new jobs (seconds)
+poll_interval: 5
+
+# =============================================================================
+# SECURITY NOTE
+# =============================================================================
+# Private keys should NEVER be stored in config files!
+# Use environment variable instead:
+#   export WATT_PRIVATE_KEY="your_base58_private_key"
+# Or the daemon will prompt you if needed for signing
+
+# =============================================================================
+# API Connection
+# =============================================================================
+# WattCoin backend URL — set via environment variable:
+#   export WATTCOIN_API_URL="https://your-backend-url.example.com"

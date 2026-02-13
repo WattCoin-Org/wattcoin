@@ -1,0 +1,13 @@
+# WattNode GUI Requirements
+# Install with: pip install -r requirements_gui.txt
+
+# Core dependencies
+requests>=2.31.0
+pillow>=10.0.0
+
+# For earnings graph visualization
+matplotlib>=3.7.0
+
+# Optional: System tray support
+# pystray>=0.19.4
+# Pillow already installed above

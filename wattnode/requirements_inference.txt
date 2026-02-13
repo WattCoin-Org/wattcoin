@@ -1,0 +1,27 @@
+# WattNode Inference Requirements (WSI Phase 1)
+# NOTE: These are installed by the GUI setup wizard automatically.
+# Only install manually if running the inference gateway without the GUI.
+#
+# Install with: pip install -r requirements_inference.txt
+#
+# Hardware Requirements:
+#   - NVIDIA GPU with ≥6GB VRAM (8GB+ recommended)
+#   - ≥12GB system RAM
+#   - ≥20GB free disk space (for model weights cache)
+#   - NVIDIA drivers installed (CUDA 12.1+ recommended)
+
+# PyTorch with CUDA support
+# Use the correct index URL for your CUDA version:
+# --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+torchvision>=0.16.0
+
+# Hugging Face model loading
+transformers>=4.36.0
+
+# Distributed inference across multiple nodes
+petals>=2.3.0  # P2P inference engine
+
+# GPU memory optimization
+accelerate>=0.25.0
+
