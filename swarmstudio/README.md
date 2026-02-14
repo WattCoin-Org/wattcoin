@@ -28,7 +28,7 @@ npm run build
 Create a `.env` file:
 
 ```
-VITE_API_URL=https://wattcoin-production-81a7.up.railway.app
+VITE_API_URL=https://wattcoin.org
 ```
 
 ## Supported Providers
@@ -64,14 +64,7 @@ swarmstudio/
 - **React** 18.3 - UI framework
 - **Vite** 5.4 - Build tool
 - **Tailwind CSS** 3.4 - Styling
-- **Railway Backend** - LLM proxy API
 
 ## License
 
 Private - WattCoin-Org
-
-## Development Status
-
-- ✅ Task B: Frontend scaffold (current)
-- ⏳ Task C: Conversation engine
-- ⏳ Task D: Cost tracker implementation

@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "https://wattcoin-production-81a7.up.railway.app";
+const API_URL = import.meta.env.VITE_API_URL || "https://wattcoin.org";
 
 export async function testKey(provider, apiKey, baseUrl = "", model = "") {
   const res = await fetch(`${API_URL}/api/v1/swarmstudio/test-key`, {
@@ -39,7 +39,7 @@ export async function streamChat(provider, model, apiKey, baseUrl, messages, max
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
+    let buffer = \'\';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -48,31 +48,31 @@ export async function streamChat(provider, model, apiKey, baseUrl, messages, max
       buffer += decoder.decode(value, { stream: true });
       
       // Process complete SSE messages (ended with \n\n)
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() || ''; // Keep incomplete message in buffer
+      const lines = buffer.split(\'\\n\\n\');
+      buffer = lines.pop() || \'\'; // Keep incomplete message in buffer
 
       for (const line of lines) {
-        if (!line.trim() || !line.startsWith('data: ')) continue;
+        if (!line.trim() || !line.startsWith(\'data: \')) continue;
 
-        const jsonStr = line.replace('data: ', '').trim();
+        const jsonStr = line.replace(\'data: \', \'\').trim();
         if (!jsonStr) continue;
 
         try {
           const event = JSON.parse(jsonStr);
 
-          if (event.type === 'token' && event.content) {
+          if (event.type === \'token\' && event.content) {
             onToken(event.content);
-          } else if (event.type === 'usage') {
+          } else if (event.type === \'usage\') {
             onUsage(event.input_tokens || 0, event.output_tokens || 0);
-          } else if (event.type === 'done') {
+          } else if (event.type === \'done\') {
             onDone();
             return;
-          } else if (event.type === 'error') {
-            onError(event.message || 'Unknown error');
+          } else if (event.type === \'error\') {
+            onError(event.message || \'Unknown error\');
             return;
           }
         } catch (parseErr) {
-          console.error('Failed to parse SSE event:', jsonStr, parseErr);
+          console.error(\'Failed to parse SSE event:\', jsonStr, parseErr);
         }
       }
     }
@@ -80,6 +80,6 @@ export async function streamChat(provider, model, apiKey, baseUrl, messages, max
     // Stream ended without explicit done event
     onDone();
   } catch (err) {
-    onError(err.message || 'Connection failed');
+    onError(err.message || \'Connection failed\');
   }
 }
