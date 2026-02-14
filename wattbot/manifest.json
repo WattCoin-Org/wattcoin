@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WattBot - AI Browser Agent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AI-powered browser agent. Bring your own LLM key or pay with WATT.",
   "permissions": [
     "activeTab",

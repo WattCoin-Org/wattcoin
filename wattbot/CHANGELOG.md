@@ -1,5 +1,13 @@
 # WattBot Changelog
 
+## v0.3.1 — February 13, 2026
+
+### Fixes
+- Added drag handle above input area — drag up/down to resize both task and prompt textareas
+- Removed broken CSS resize handles from both textareas
+- Task input is now resizable again (was locked at `resize: none` with no alternative)
+- Prompt textarea max-height limit removed
+
 ## v0.3.0 — February 13, 2026
 
 ### New Features
@@ -78,3 +86,4 @@
 - Safety system: domain blocking, action confirmation, step limits
 - Settings page with provider/model configuration
 - Content scripts for DOM interaction and highlighting
+

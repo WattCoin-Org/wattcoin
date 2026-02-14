@@ -448,3 +448,44 @@
     return d.innerHTML;
   }
 })();
+
+/* Resize handle — drag to resize input area */
+(function() {
+  var handle = document.getElementById('resizeHandle');
+  var taskInput = document.getElementById('taskInput');
+  var promptInput = document.getElementById('promptInput');
+  var promptBody = document.getElementById('promptBody');
+  var dragging = false;
+  var startY = 0;
+  var startTaskH = 0;
+  var startPromptH = 0;
+
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startTaskH = taskInput.offsetHeight;
+    startPromptH = (promptBody.style.display !== 'none') ? promptInput.offsetHeight : 0;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var delta = startY - e.clientY; // positive = dragging up = bigger
+    var newTaskH = Math.max(36, Math.min(300, startTaskH + delta * 0.6));
+    taskInput.style.height = newTaskH + 'px';
+    if (promptBody.style.display !== 'none' && startPromptH > 0) {
+      var newPromptH = Math.max(50, Math.min(200, startPromptH + delta * 0.4));
+      promptInput.style.height = newPromptH + 'px';
+    }
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+

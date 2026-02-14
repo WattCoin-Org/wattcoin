@@ -252,7 +252,7 @@ body {
 .prompt-body.open { display: block; }
 .prompt-body textarea {
   width: 100%;
-  min-height: 50px; max-height: 100px;
+  min-height: 50px;
   background: #0D0D0D;
   border: 1px solid #333;
   border-radius: 8px;
@@ -260,7 +260,7 @@ body {
   padding: 8px;
   font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
-  resize: vertical;
+  resize: none;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -274,11 +274,37 @@ body {
 .prompt-actions button:hover { color: #FCA5A5; }
 
 /* ── Input Area ── */
-.input-area {
+/* Resize Handle */
+.resize-handle {
+  height: 10px;
+  background: #1A1A1A;
   border-top: 1px solid #333;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.resize-handle:hover, .resize-handle:active {
+  background: #262626;
+  border-top-color: #F59E0B;
+}
+.resize-grip {
+  color: #555;
+  font-size: 10px;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+.resize-handle:hover .resize-grip { color: #F59E0B; }
+
+.input-area {
   background: #1A1A1A;
   padding: 10px 12px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 .input-row { display: flex; gap: 6px; align-items: flex-end; }
 .input-row textarea {
@@ -291,7 +317,7 @@ body {
   font-size: 12.5px;
   font-family: 'Inter', sans-serif;
   resize: none;
-  min-height: 36px; max-height: 100px;
+  min-height: 36px;
   outline: none;
   transition: border-color 0.2s;
   line-height: 1.4;
@@ -461,3 +487,4 @@ body {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
