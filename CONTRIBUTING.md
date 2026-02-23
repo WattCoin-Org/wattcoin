@@ -8,11 +8,11 @@ Earn WATT for contributing code, documentation, reviews, and more.
 
 ## Quick Start
 
-1. **Have a Solana wallet** with 5,000+ WATT balance
+1. **Have a Solana wallet** with 250+ WATT balance
 2. **Find a bounty** — issues labeled `[BOUNTY: X WATT]`
-3. **Claim it** — comment + stake 10% of bounty
+3. **Claim it** — comment on the issue
 4. **Build it** — submit PR within 7 days
-5. **Get paid** — bounty + stake returned on merge
+5. **Get paid** — bounty sent automatically on merge
 
 ---
 
@@ -21,20 +21,20 @@ Earn WATT for contributing code, documentation, reviews, and more.
 | Requirement | Details |
 |-------------|---------|
 | **Wallet** | Solana wallet (Phantom recommended) |
-| **Minimum balance** | 5,000 WATT to participate |
-| **Stake** | 10% of bounty value to claim |
+| **Minimum balance** | 250 WATT to participate |
+| **Stake** | None required (removed Feb 2026) |
 
-**Why stake?** Skin in the game. Filters spam, rewards serious contributors.
+**Why 250 WATT?** Proves you have a funded wallet. Filters spam while keeping the barrier low for new contributors.
 
 ---
 
 ## Bounty Tiers
 
-| Tier | Examples | Bounty | Stake |
-|------|----------|--------|-------|
-| **Low** | Doc fixes, typos, translations | 5,000 - 20,000 WATT | 10% |
-| **Medium** | Tests, small features, code review | 20,000 - 100,000 WATT | 10% |
-| **High** | Major features, contracts, security | 100,000 - 500,000 WATT | 10% |
+| Tier | Examples | Bounty |
+|------|----------|--------|
+| **Low** | Doc fixes, typos, translations | 500 - 2,000 WATT |
+| **Medium** | Tests, small features, code review | 2,000 - 10,000 WATT |
+| **High** | Major features, contracts, security | 10,000 - 50,000 WATT |
 
 ---
 
@@ -55,26 +55,9 @@ Claiming — I'll add unit tests covering the main transfer functions.
 ETA: 3 days.
 ```
 
-### Step 3: Send Stake
+### Step 3: Start Building
 
-Send 10% of bounty to the escrow wallet with the issue number in memo:
-
-| Field | Value |
-|-------|-------|
-| **To** | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
-| **Amount** | 10% of bounty (e.g., 5,000 WATT for 50K bounty) |
-| **Memo** | `ISSUE-123` (replace with actual issue number) |
-
-### Step 4: Post TX Link
-
-Reply to your claim comment with the transaction link:
-```
-Stake sent: https://solscan.io/tx/[your_tx_signature]
-```
-
-### Step 5: Wait for Confirmation
-
-A maintainer will confirm your claim within 24 hours.
+No stake required — just fork and start working. The system checks your wallet balance (250+ WATT) when you submit your PR.
 
 ---
 
@@ -114,9 +97,6 @@ What this PR does.
 
 ## Bounty Issue
 Closes #123
-
-## Stake Transaction
-https://solscan.io/tx/[your_stake_tx]
 
 ## Testing
 - [ ] Ran tests locally
@@ -159,11 +139,11 @@ If you're an agent or want automated notifications, include a webhook URL. We'll
 ```
 PR Submitted
     ↓
-AI Pre-Screen (automated)
+AI Review (automated, scored 1-10)
     ↓
-Community Review (other contributors)
+Security Scan (automated, fail-closed)
     ↓
-Human Approval (maintainer)
+Score ≥7: Auto-Merge + Auto-Pay
     ↓
 Merge + Payout
 ```
@@ -190,11 +170,11 @@ Reviewers can earn WATT too:
 
 ## Getting Paid
 
-Once your PR is merged:
+Once your PR scores ≥7/10 on AI review and passes security scan:
 
-1. **Bounty sent** to your wallet within 24 hours
-2. **Stake returned** in the same transaction
-3. **Transaction posted** as comment on the PR
+1. **Auto-merged** — no manual approval needed
+2. **Bounty sent** automatically after deploy confirmation
+3. **Transaction posted** as comment on the PR with Solscan link
 
 ---
 
@@ -275,8 +255,8 @@ You'll receive a POST request when your PR is approved or rejected, so you can a
 
 | Wallet | Purpose | Address |
 |--------|---------|---------|
-| **Stake Escrow** | Holds contributor stakes | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
-| **Bounty Payout** | Pays completed bounties | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
+| **Bounty Source** | Holds and pays bounties | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
+
 
 ---
 
@@ -290,8 +270,8 @@ A: Yes, but only one high-tier (100K+) at a time. You can work on multiple low/m
 **Q: What if I can't finish in time?**
 A: Communicate early. Request an extension with reason. Comment on the issue before the deadline. Abandoning without notice = slashed stake.
 
-**Q: Can I claim without staking?**
-A: No. Stake is required for all bounties. It ensures contributors are committed.
+**Q: Do I need to stake WATT to claim?**
+A: No. Staking was removed in Feb 2026. You just need 250+ WATT in your wallet to participate.
 
 **Q: What wallet should I use?**
 A: Any Solana wallet works. Phantom is recommended for its user-friendly interface. Make sure you have SOL for transaction fees.
@@ -319,7 +299,7 @@ A: Yes! Open an issue with `[BOUNTY REQUEST]` tag. Maintainers will review and a
 A: Comment on the issue to discuss. Maintainers may adjust bounty values based on actual complexity.
 
 **Q: How quickly will I get paid after merge?**
-A: Within 24 hours of merge. You'll receive the bounty + your stake in a single transaction.
+A: Automatically after deploy confirmation — typically within minutes of merge.
 
 **Q: What if there's a transaction issue?**
 A: Contact maintainers immediately. Provide your wallet address and the issue/PR numbers.
@@ -351,9 +331,6 @@ with code blocks and expected outputs.
 
 ## Bounty Issue
 Closes #4
-
-## Stake Transaction
-https://solscan.io/tx/3xYzK...abc123
 
 ## Changes Made
 - Added 2 example PR templates
@@ -432,32 +409,7 @@ Claiming — I'll add comprehensive unit tests for tip_transfer.py covering:
 ETA: 4 days.
 ```
 
-**Step 2: Calculate and send stake**
-```
-Bounty amount: 50,000 WATT
-Stake (10%):   5,000 WATT
-```
-
-Send to escrow wallet with memo:
-```
-To: 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
-Amount: 5,000 WATT
-Memo: ISSUE-5
-```
-
-**Step 3: Post transaction confirmation**
-```
-Stake sent: https://solscan.io/tx/[your_transaction_signature]
-```
-
-**Step 4: Wait for maintainer confirmation**
-
-You'll receive a reply like:
-```
-✅ Claim confirmed. You have 7 days to submit a PR.
-```
-
-**Step 5: Fork and work**
+**Step 2: Fork and work**
 ```bash
 # Fork via GitHub UI, then:
 git clone https://github.com/YOUR_USERNAME/wattcoin.git
@@ -474,11 +426,11 @@ git commit -m "Add unit tests for tip_transfer.py"
 git push origin feature/issue-5-unit-tests
 ```
 
-**Step 6: Submit PR**
+**Step 3: Submit PR**
 
 Create PR from your fork to the main repo with the required format.
 
-**Step 7: Address review feedback**
+**Step 4: Address review feedback**
 
 Reviewers may request changes. Update your branch:
 ```bash
@@ -488,14 +440,12 @@ git commit -m "Address review feedback: improve test coverage"
 git push origin feature/issue-5-unit-tests
 ```
 
-**Step 8: Get paid! 🎉**
+**Step 5: Get paid! 🎉**
 
 Once merged, you'll see a comment:
 ```
 💰 Bounty paid!
 - Bounty: 50,000 WATT
-- Stake returned: 5,000 WATT
-- Total: 55,000 WATT
 - TX: https://solscan.io/tx/[payout_tx]
 ```
 
@@ -560,8 +510,8 @@ WattCoin uses a merit-based reputation system to gate auto-merge permissions and
 |------|-------|----------------------|--------------|
 | 🚫 Flagged | < 0 | Never (admin only) | Blocked |
 | 🆕 New | 0 | Admin review only | Standard |
-| 🥉 Bronze | 1-49 | AI score ≥ 9/10 | Standard |
-| 🥈 Silver | 50-89 | AI score ≥ 8/10 | +10% |
+| 🥉 Bronze | 1-49 | AI score ≥ 7/10 | Standard |
+| 🥈 Silver | 50-89 | AI score ≥ 7/10 | +10% |
 | 🥇 Gold | 90+ | AI score ≥ 7/10 | +20% |
 
 ### How It Works
