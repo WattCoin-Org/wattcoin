@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-03-04T00:00:00+00:00",
+  "rpc_url": "https://api.mainnet-beta.solana.com",
+  "mint": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+  "filters": {
+    "start_date_epoch": 1741046400,
+    "end_date_epoch": 1741132800,
+    "wallet": null,
+    "max_signatures": 200
+  },
+  "scanned_signatures": 200,
+  "matched_transactions": 4,
+  "total_watt": 4300.0,
+  "category_breakdown": {
+    "bounty_payment": {
+      "count": 1,
+      "total_watt": 2500.0
+    },
+    "task_payout": {
+      "count": 1,
+      "total_watt": 1200.0
+    },
+    "swarmsolve_payment": {
+      "count": 1,
+      "total_watt": 500.0
+    },
+    "other": {
+      "count": 1,
+      "total_watt": 100.0
+    }
+  },
+  "transactions": [
+    {
+      "signature": "EXAMPLE_SIG_1",
+      "slot": 332211445,
+      "block_time": 1741120000,
+      "memo": "WattCoin Bounty | PR #98 | Issue #240 | Score: 9/10 | 2500 WATT",
+      "all_memos": [
+        "WattCoin Bounty | PR #98 | Issue #240 | Score: 9/10 | 2500 WATT"
+      ],
+      "category": "bounty_payment",
+      "amount_watt": 2500.0,
+      "accounts": [
+        "wallet_sender",
+        "wallet_receiver"
+      ]
+    },
+    {
+      "signature": "EXAMPLE_SIG_2",
+      "slot": 332211111,
+      "block_time": 1741112000,
+      "memo": "task:payout:task_11fa544b80b7",
+      "all_memos": [
+        "task:payout:task_11fa544b80b7"
+      ],
+      "category": "task_payout",
+      "amount_watt": 1200.0,
+      "accounts": [
+        "wallet_a",
+        "wallet_b"
+      ]
+    },
+    {
+      "signature": "EXAMPLE_SIG_3",
+      "slot": 332210999,
+      "block_time": 1741108000,
+      "memo": "swarmsolve:payment:SOLUTION_123",
+      "all_memos": [
+        "swarmsolve:payment:SOLUTION_123"
+      ],
+      "category": "swarmsolve_payment",
+      "amount_watt": 500.0,
+      "accounts": [
+        "wallet_c",
+        "wallet_d"
+      ]
+    },
+    {
+      "signature": "EXAMPLE_SIG_4",
+      "slot": 332210777,
+      "block_time": 1741104000,
+      "memo": "manual adjustment",
+      "all_memos": [
+        "manual adjustment"
+      ],
+      "category": "other",
+      "amount_watt": 100.0,
+      "accounts": [
+        "wallet_x",
+        "wallet_y"
+      ]
+    }
+  ]
+}

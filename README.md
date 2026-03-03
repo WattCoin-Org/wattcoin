@@ -157,9 +157,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ├── admin_blueprint.py # Admin dashboard
 ├── skills/wattcoin/  # OpenClaw skill
 ├── docs/             # API documentation
+├── tools/            # Contributor utilities (memo parser, tests)
 ├── deployment/       # Launch scripts
 └── WHITEPAPER.md     # Technical specification
 ```
+
+## 🧰 Contributor Utility: Solana Memo Parser
+
+Need to audit payout memos by category? Use `tools/memo_parser.py`.
+
+- Documentation: [docs/WATT_MEMO_PARSER.md](docs/WATT_MEMO_PARSER.md)
+- Sample output: [docs/samples/watt_memo_report.sample.json](docs/samples/watt_memo_report.sample.json)
+
 
 ## 🔐 Wallets
 
