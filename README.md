@@ -6,6 +6,13 @@
 [![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
 [![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Solana](https://img.shields.io/badge/Network-Solana-9945FF?logo=solana)](https://solana.com)
+[![Token-2022](https://img.shields.io/badge/Token_Standard-SPL_Token--2022-00BCD4)](https://spl.solana.com/token-2022)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://www.python.org)
+[![Bounties](https://img.shields.io/badge/Open_Bounties-30+-FF6B6B)](https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aissue+is%3Aopen+label%3Abounty)
+[![Contributors](https://img.shields.io/badge/Contributors-10+-FF9900)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Active](https://img.shields.io/badge/Status-Active-brightgreen)](https://github.com/WattCoin-Org/wattcoin/actions)
 
 ## 🚀 Token Info
 
