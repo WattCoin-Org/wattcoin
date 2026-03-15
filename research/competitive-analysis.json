@@ -1,0 +1,383 @@
+{
+  "metadata": {
+    "title": "Competitive Analysis: AI & Compute Token Projects",
+    "date": "2026-03-15",
+    "analyst": "@zhuzhushiwojia",
+    "task": "WattCoin #148",
+    "payout_wallet": "RTC53fdf727dd301da40ee79cdd7bd740d8c04d2fb4",
+    "projects_analyzed": 10
+  },
+  "wattcoin": {
+    "name": "WattCoin",
+    "ticker": "WATT",
+    "chain": "Solana",
+    "contract": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+    "focus": "AI agent bounty/task economy",
+    "tokenomics": {
+      "total_supply": 1000000000,
+      "burn_mechanism": "0.1% on every transaction",
+      "staking": true
+    },
+    "differentiators": [
+      "Only agent-focused bounty economy",
+      "Solana-native (fast, cheap)",
+      "Deflationary tokenomics",
+      "Low barrier to entry",
+      "Active community"
+    ]
+  },
+  "competitors": [
+    {
+      "name": "Bittensor",
+      "ticker": "TAO",
+      "chain": "Native (Subnet-based)",
+      "price_usd": 268.23,
+      "market_cap": 2572330437,
+      "volume_24h": 269548903,
+      "focus": "Decentralized ML training",
+      "tokenomics": {
+        "emission": "1 TAO per block, halving every 4 years",
+        "burn": false,
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 250000,
+        "discord_members": 80000
+      },
+      "strengths": [
+        "First-mover in decentralized ML",
+        "Strong developer community",
+        "Innovative subnet architecture",
+        "High liquidity"
+      ],
+      "weaknesses": [
+        "Complex for average users",
+        "High barrier to entry ($268/token)",
+        "No agent economy",
+        "Slow transaction finality"
+      ],
+      "vs_wattcoin": "More complex, ML-focused, no agent features"
+    },
+    {
+      "name": "Fetch.ai",
+      "ticker": "FET",
+      "chain": "Cosmos SDK",
+      "price_usd": 0.19,
+      "market_cap": 431174033,
+      "volume_24h": 61168732,
+      "focus": "Autonomous AI agents",
+      "tokenomics": {
+        "circulating_supply": 2260000000,
+        "max_supply": 2720000000,
+        "burn": false,
+        "staking": true,
+        "staking_apy": 0.10
+      },
+      "community": {
+        "twitter_followers": 300000,
+        "discord_members": 50000
+      },
+      "strengths": [
+        "Strong agent framework",
+        "ASI alliance merger",
+        "Cosmos ecosystem",
+        "Enterprise partnerships"
+      ],
+      "weaknesses": [
+        "Merger complexity",
+        "Less focused on bounties",
+        "Slower than Solana",
+        "Limited agent adoption"
+      ],
+      "vs_wattcoin": "Slower, enterprise focus, limited bounty system"
+    },
+    {
+      "name": "Render Network",
+      "ticker": "RENDER",
+      "chain": "Solana",
+      "price_usd": 1.91,
+      "market_cap": 992529249,
+      "volume_24h": 101740834,
+      "focus": "GPU rendering marketplace",
+      "tokenomics": {
+        "circulating_supply": 519000000,
+        "max_supply": 536000000,
+        "burn": true,
+        "burn_rate": "100% of network fees",
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 400000,
+        "discord_members": 100000
+      },
+      "strengths": [
+        "Real-world utility",
+        "Solana migration",
+        "Deflationary tokenomics",
+        "Strong brand"
+      ],
+      "weaknesses": [
+        "Focused on rendering, not AI agents",
+        "No agent economy",
+        "Centralized job matching",
+        "Limited to GPU workloads"
+      ],
+      "vs_wattcoin": "Rendering focus, no agent features"
+    },
+    {
+      "name": "Akash Network",
+      "ticker": "AKT",
+      "chain": "Cosmos SDK",
+      "price_usd": 0.43,
+      "market_cap": 123912141,
+      "volume_24h": 3276584,
+      "focus": "Decentralized cloud compute",
+      "tokenomics": {
+        "circulating_supply": 289000000,
+        "max_supply": 388000000,
+        "burn": false,
+        "staking": true,
+        "staking_percentage": 0.65
+      },
+      "community": {
+        "twitter_followers": 150000,
+        "discord_members": 30000
+      },
+      "strengths": [
+        "Real deployments",
+        "80% cheaper than AWS",
+        "Strong technical team",
+        "Growing provider network"
+      ],
+      "weaknesses": [
+        "Not AI-specific",
+        "No agent framework",
+        "Slower than Solana",
+        "Complex for non-technical users"
+      ],
+      "vs_wattcoin": "General compute, not AI agents"
+    },
+    {
+      "name": "Ocean Protocol",
+      "ticker": "OCEAN",
+      "chain": "Ethereum",
+      "price_usd": 0.12,
+      "market_cap": 24424807,
+      "volume_24h": 61515,
+      "focus": "Data marketplace",
+      "tokenomics": {
+        "circulating_supply": 200000000,
+        "max_supply": 1410000000,
+        "burn": false,
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 200000,
+        "discord_members": 40000
+      },
+      "strengths": [
+        "Unique data marketplace",
+        "Privacy-preserving compute",
+        "ASI alliance merger",
+        "Enterprise data partnerships"
+      ],
+      "weaknesses": [
+        "Low liquidity post-merger",
+        "Ethereum gas fees",
+        "Complex data tokenization",
+        "Limited AI agent integration"
+      ],
+      "vs_wattcoin": "Data focus, Ethereum fees, no agents"
+    },
+    {
+      "name": "Nosana",
+      "ticker": "NOS",
+      "chain": "Solana",
+      "price_usd": 0.20,
+      "market_cap": 16961117,
+      "volume_24h": 265633,
+      "focus": "GPU inference grid",
+      "tokenomics": {
+        "circulating_supply": 83000000,
+        "max_supply": 100000000,
+        "burn": false,
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 50000,
+        "discord_members": 15000
+      },
+      "strengths": [
+        "Solana-native",
+        "AI inference focus",
+        "Growing GPU network",
+        "Similar vision to WattCoin"
+      ],
+      "weaknesses": [
+        "Smaller community",
+        "No agent bounty system",
+        "Limited to GPU inference",
+        "Less developed ecosystem"
+      ],
+      "vs_wattcoin": "Closest competitor, lacks agent features"
+    },
+    {
+      "name": "Aethir",
+      "ticker": "ATH",
+      "chain": "Ethereum",
+      "price_usd": 0.05,
+      "market_cap": 50000000,
+      "volume_24h": 5000000,
+      "focus": "Enterprise GPU cloud",
+      "tokenomics": {
+        "burn": true,
+        "burn_rate": "Partial fee burn",
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 100000,
+        "discord_members": 40000
+      },
+      "strengths": [
+        "Enterprise-grade",
+        "Gaming + AI focus",
+        "Major VC backing",
+        "Data center partnerships"
+      ],
+      "weaknesses": [
+        "Ethereum fees",
+        "No agent framework",
+        "Centralized elements",
+        "Less transparent"
+      ],
+      "vs_wattcoin": "Enterprise focus, no agents"
+    },
+    {
+      "name": "NodeAI",
+      "ticker": "GPU",
+      "chain": "Ethereum",
+      "price_usd": 1.50,
+      "market_cap": 30000000,
+      "focus": "GPU computing",
+      "tokenomics": {
+        "burn": false,
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 30000,
+        "discord_members": 10000
+      },
+      "strengths": [
+        "Pure GPU focus",
+        "Simple value prop",
+        "Growing node network"
+      ],
+      "weaknesses": [
+        "Small community",
+        "Ethereum fees",
+        "No agent features",
+        "Limited differentiation"
+      ],
+      "vs_wattcoin": "Small, undifferentiated"
+    },
+    {
+      "name": "SingularityNET",
+      "ticker": "AGIX",
+      "chain": "Ethereum/Cardano",
+      "price_usd": 0.30,
+      "market_cap": 380000000,
+      "focus": "AI algorithm marketplace",
+      "tokenomics": {
+        "burn": false,
+        "staking": true,
+        "merger": "ASI (with FET, OCEAN)"
+      },
+      "community": {
+        "twitter_followers": 500000,
+        "discord_members": 100000
+      },
+      "strengths": [
+        "Largest AI crypto community",
+        "Ben Goertzel (famous AI researcher)",
+        "Diverse AI marketplace",
+        "ASI alliance"
+      ],
+      "weaknesses": [
+        "Merger complexity",
+        "Multi-chain fragmentation",
+        "Limited real adoption",
+        "No agent bounty system"
+      ],
+      "vs_wattcoin": "Merger complexity, no bounties"
+    },
+    {
+      "name": "Cortex",
+      "ticker": "CTXC",
+      "chain": "Native (EVM-compatible)",
+      "price_usd": 0.20,
+      "market_cap": 50000000,
+      "focus": "On-chain AI inference",
+      "tokenomics": {
+        "burn": false,
+        "staking": true
+      },
+      "community": {
+        "twitter_followers": 80000,
+        "discord_members": 20000
+      },
+      "strengths": [
+        "Unique on-chain AI",
+        "Early mover (2018)",
+        "Technical innovation"
+      ],
+      "weaknesses": [
+        "Older project (less hype)",
+        "Limited adoption",
+        "Complex technology",
+        "No agent economy"
+      ],
+      "vs_wattcoin": "Older, less adoption"
+    }
+  ],
+  "comparative_summary": {
+    "wattcoin_advantages": [
+      "Only agent-focused bounty economy",
+      "Solana-native (fast, cheap)",
+      "Deflationary (0.1% burn)",
+      "Low barrier to entry",
+      "Active community"
+    ],
+    "competitive_threats": [
+      "Fetch.ai expanding into agent bounties",
+      "Nosana copying agent features",
+      "ASI alliance dominating AI crypto narrative",
+      "Failure to gain agent developer adoption"
+    ],
+    "market_opportunities": [
+      "Agent economy is underserved",
+      "Solana AI narrative growing",
+      "Bounty/task system is unique",
+      "Low market cap (10-50x growth potential)"
+    ]
+  },
+  "recommendations": {
+    "short_term": [
+      "Emphasize agent economy differentiation in marketing",
+      "List on CoinMarketCap/CoinGecko",
+      "Partner with Nosana (collaboration not competition)",
+      "Showcase agent success stories"
+    ],
+    "medium_term": [
+      "Launch agent framework SDK",
+      "Target OpenClaw/CrewAI/LangChain communities",
+      "List on Solana DEXes (Raydium, Orca, Jupiter)",
+      "Build agent marketplace UI"
+    ],
+    "long_term": [
+      "Become 'Stripe for AI agents'",
+      "Cross-chain expansion",
+      "Enterprise partnerships",
+      "Governance token evolution"
+    ]
+  }
+}
