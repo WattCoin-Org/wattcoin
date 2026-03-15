@@ -1,0 +1,14 @@
+{
+  "name": "watt-node",
+  "version": "1.0.0",
+  "description": "WattNode for running the node and completing jobs for 7 days",
+  "main": "WattNode.js",
+  "scripts": {
+    "start": "node WattNode.js"
+  },
+  "dependencies": {
+    "child_process": "latest"
+  },
+  "author": "WattCoin Team",
+  "license": "MIT"
+}
