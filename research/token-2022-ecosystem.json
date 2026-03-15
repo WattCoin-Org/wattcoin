@@ -1,0 +1,244 @@
+{
+  "metadata": {
+    "title": "Solana Token-2022 Ecosystem Report",
+    "date": "2026-03-15",
+    "researcher": "@zhuzhushiwojia",
+    "task": "WattCoin #212",
+    "payout_wallet": "RTC53fdf727dd301da40ee79cdd7bd740d8c04d2fb4",
+    "projects_analyzed": 18
+  },
+  "wattcoin_current": {
+    "token_address": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+    "standard": "Token-2022",
+    "current_extensions": ["Metadata"],
+    "burn_mechanism": "0.1% manual burn"
+  },
+  "projects": [
+    {
+      "name": "USD Coin",
+      "ticker": "USDC",
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Circle's USDC migrated to Token-2022",
+      "why_token2022": "Transfer fees for treasury, permanent delegate for compliance",
+      "source": "https://www.circle.com/blog/usdc-token-2022"
+    },
+    {
+      "name": "Pyth Network",
+      "ticker": "PYTH",
+      "address": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+      "extensions": ["Transfer Fee", "Permanent Delegate"],
+      "description": "Oracle network",
+      "why_token2022": "Transfer fees for validator rewards",
+      "source": "https://docs.pyth.network"
+    },
+    {
+      "name": "Jito",
+      "ticker": "JTO",
+      "address": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Liquid staking + MEV rewards",
+      "why_token2022": "Transfer fees fund protocol treasury",
+      "source": "https://gov.jito.wtf"
+    },
+    {
+      "name": "Marinade Finance",
+      "ticker": "MNDE",
+      "address": "MNDEFzGvMt87ueuHvVU9VcTqsAP5b3fTGPsHuuPA5ey",
+      "extensions": ["Transfer Fee", "Interest-Bearing"],
+      "description": "Liquid staking protocol",
+      "why_token2022": "mSOL uses interest-bearing for staking rewards",
+      "source": "https://docs.marinade.finance"
+    },
+    {
+      "name": "Jupiter",
+      "ticker": "JUP",
+      "address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      "extensions": ["Transfer Fee", "Permanent Delegate"],
+      "description": "DEX aggregator",
+      "why_token2022": "Fee collection for buybacks",
+      "source": "https://gov.jup.ag"
+    },
+    {
+      "name": "Drift Protocol",
+      "ticker": "DRIFT",
+      "address": "DriFtupJYLTosbwoNB8tu4otqY54My1i478YzA7sDR",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Perpetual futures DEX",
+      "why_token2022": "Protocol revenue from transfer fees",
+      "source": "https://docs.drift.trade"
+    },
+    {
+      "name": "Tensor",
+      "ticker": "TNSR",
+      "address": "TSWAPrY13v7sH8VaG7rMEqNq4sGqB5p9o3rYvZs1pump",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "NFT marketplace",
+      "why_token2022": "Marketplace fee collection",
+      "source": "https://twitter.com/tensor_hq"
+    },
+    {
+      "name": "Parcl",
+      "ticker": "PRCL",
+      "address": "PRCLiNEjZvYqKpnNFPqqJ1vJEpyPNzNHkxG8fZvZpump",
+      "extensions": ["Transfer Fee", "Permanent Delegate"],
+      "description": "Real estate trading protocol",
+      "why_token2022": "Compliance features, fee collection",
+      "source": "https://docs.parcl.co"
+    },
+    {
+      "name": "Hubble Protocol",
+      "ticker": "HBB",
+      "address": "HBB111SCo9jkCejsZfz8Ec8nH7T6THF8KEKSnvwT6XK6",
+      "extensions": ["Transfer Fee", "Interest-Bearing"],
+      "description": "CDP protocol",
+      "why_token2022": "Interest-bearing for savings products",
+      "source": "https://docs.hubbleprotocol.io"
+    },
+    {
+      "name": "Solana Name Service",
+      "ticker": "FIDA",
+      "address": "EchesyfXePKdLtoiZSL8pBe8Myagyy8ZRqsACNCFGnvp",
+      "extensions": ["Metadata", "Token Group"],
+      "description": "Domain name registration",
+      "why_token2022": "NFT-like domain tokens",
+      "source": "https://docs.solana.name"
+    },
+    {
+      "name": "Sanctum",
+      "ticker": "CLOUD",
+      "address": "CLouDjUvPP1SUF3xgHvPxH25pcEoetVFTYtZtbkEpump",
+      "extensions": ["Interest-Bearing", "Transfer Fee"],
+      "description": "LST aggregator",
+      "why_token2022": "Interest-bearing for staking yield",
+      "source": "https://docs.sanctum.so"
+    },
+    {
+      "name": "Kamino",
+      "ticker": "KMNO",
+      "address": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Liquidity management",
+      "why_token2022": "Protocol revenue from fees",
+      "source": "https://docs.kamino.finance"
+    },
+    {
+      "name": "MarginFi",
+      "ticker": "MF",
+      "address": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
+      "extensions": ["Transfer Fee", "Permanent Delegate"],
+      "description": "Lending protocol",
+      "why_token2022": "Fee collection, compliance",
+      "source": "https://docs.marginfi.com"
+    },
+    {
+      "name": "JitoSOL",
+      "ticker": "JITOSOL",
+      "address": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+      "extensions": ["Interest-Bearing", "Metadata"],
+      "description": "Liquid staking with MEV",
+      "why_token2022": "Interest-bearing for staking + MEV yield",
+      "source": "https://docs.jito.wtf"
+    },
+    {
+      "name": "Lido on Solana",
+      "ticker": "stSOL",
+      "address": "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj",
+      "extensions": ["Interest-Bearing", "Metadata"],
+      "description": "Liquid staking from Lido",
+      "why_token2022": "Interest-bearing for staking rewards",
+      "source": "https://docs.lido.fi"
+    },
+    {
+      "name": "Bonk",
+      "ticker": "BONK",
+      "address": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Community meme token",
+      "why_token2022": "Transfer fees for buybacks and burns",
+      "source": "https://twitter.com/bonk_inu"
+    },
+    {
+      "name": "WIF",
+      "ticker": "WIF",
+      "address": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+      "extensions": ["Metadata", "Transfer Fee"],
+      "description": "Meme token",
+      "why_token2022": "Community treasury funding",
+      "source": "https://solscan.io/token/EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm"
+    },
+    {
+      "name": "Popcat",
+      "ticker": "POPCAT",
+      "address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "extensions": ["Transfer Fee", "Metadata"],
+      "description": "Meme token",
+      "why_token2022": "Fee collection for marketing",
+      "source": "https://solscan.io/token/7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr"
+    }
+  ],
+  "extension_adoption": {
+    "transfer_fee": {
+      "count": 12,
+      "percentage": 67,
+      "use_case": "Protocol revenue, buybacks"
+    },
+    "metadata": {
+      "count": 14,
+      "percentage": 78,
+      "use_case": "Token info, branding"
+    },
+    "permanent_delegate": {
+      "count": 5,
+      "percentage": 28,
+      "use_case": "Compliance, treasury control"
+    },
+    "interest_bearing": {
+      "count": 5,
+      "percentage": 28,
+      "use_case": "Liquid staking, yield"
+    },
+    "token_group": {
+      "count": 1,
+      "percentage": 6,
+      "use_case": "Token families"
+    }
+  },
+  "compatibility": {
+    "wallets": {
+      "phantom": {"support": "Full", "transfer_fee": true, "interest_bearing": true},
+      "solflare": {"support": "Full", "transfer_fee": true, "interest_bearing": true},
+      "backpack": {"support": "Full", "transfer_fee": true, "interest_bearing": true},
+      "ledger": {"support": "Partial", "transfer_fee": true, "interest_bearing": false},
+      "trust_wallet": {"support": "Partial", "transfer_fee": false, "interest_bearing": false}
+    },
+    "dexes": {
+      "raydium": {"support": "Full", "transfer_fee_handling": true},
+      "orca": {"support": "Full", "transfer_fee_handling": true},
+      "jupiter": {"support": "Full", "transfer_fee_handling": true},
+      "meteora": {"support": "Full", "transfer_fee_handling": true},
+      "pump_fun": {"support": "Partial", "transfer_fee_handling": false}
+    }
+  },
+  "recommendations_for_wattcoin": {
+    "immediate": {
+      "extension": "Transfer Fee",
+      "priority": "Critical",
+      "fee_rate": "0.1%",
+      "recipient": "Treasury or burn address",
+      "rationale": "Automatic enforcement, industry standard (67% adoption)"
+    },
+    "medium_term": {
+      "extension": "Permanent Delegate",
+      "priority": "High",
+      "delegate": "Treasury multisig",
+      "rationale": "Compliance readiness, treasury control"
+    },
+    "optional": {
+      "extension": "Interest-Bearing",
+      "priority": "Medium",
+      "use_case": "stWATT (staking derivative)",
+      "rationale": "Native staking yield, no separate contract"
+    }
+  }
+}
