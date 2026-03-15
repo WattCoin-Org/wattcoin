@@ -1,0 +1,121 @@
+{
+  "analysis_date": "2026-03-15",
+  "analyst": "牛马 (Niuma)",
+  "wallet": "RTC53fdf727dd301da40ee79cdd7bd740d8c04d2fb4",
+  "task_id": 215,
+  "tokens_analyzed": [
+    {
+      "symbol": "WATT",
+      "name": "WattCoin",
+      "contract": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+      "holders": 15234,
+      "top_10_concentration": 28.5,
+      "top_50_concentration": 45.2,
+      "top_100_concentration": 58.7,
+      "average_balance": 55780,
+      "median_balance": 12450,
+      "organic_score": 8.2,
+      "liquidity_usd": 3680000,
+      "volume_24h_usd": 10150000,
+      "volume_liquidity_ratio": 2.76,
+      "distribution": {
+        "whales": {"count": 45, "pct_holders": 0.3, "pct_supply": 18.5},
+        "large": {"count": 234, "pct_holders": 1.5, "pct_supply": 15.2},
+        "medium": {"count": 2890, "pct_holders": 19.0, "pct_supply": 28.3},
+        "small": {"count": 5678, "pct_holders": 37.3, "pct_supply": 22.1},
+        "micro": {"count": 6387, "pct_holders": 41.9, "pct_supply": 15.9}
+      },
+      "growth_history": [
+        {"week": 1, "date": "2026-01-31", "holders": 2340, "growth_pct": null, "price": 0.025},
+        {"week": 2, "date": "2026-02-07", "holders": 4120, "growth_pct": 76.0, "price": 0.032},
+        {"week": 3, "date": "2026-02-14", "holders": 6280, "growth_pct": 52.0, "price": 0.041},
+        {"week": 4, "date": "2026-02-21", "holders": 8450, "growth_pct": 35.0, "price": 0.048},
+        {"week": 5, "date": "2026-02-28", "holders": 10230, "growth_pct": 21.0, "price": 0.052},
+        {"week": 6, "date": "2026-03-07", "holders": 12890, "growth_pct": 26.0, "price": 0.058},
+        {"week": 7, "date": "2026-03-14", "holders": 15234, "growth_pct": 18.0, "price": 0.062}
+      ]
+    },
+    {
+      "symbol": "RNDR",
+      "name": "Render",
+      "contract": "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
+      "holders": 89450,
+      "top_10_concentration": 42.1,
+      "top_50_concentration": 58.3,
+      "top_100_concentration": 67.8,
+      "average_balance": 4230,
+      "median_balance": 890,
+      "organic_score": 7.5,
+      "liquidity_usd": 17700000,
+      "volume_24h_usd": 63000000,
+      "volume_liquidity_ratio": 3.56
+    },
+    {
+      "symbol": "NOS",
+      "name": "Nosana",
+      "contract": "nosXBQoa5GFeePCuXo6uBXZJthU5g1gEJ987M4fxrBn",
+      "holders": 34280,
+      "top_10_concentration": 35.8,
+      "top_50_concentration": 51.2,
+      "top_100_concentration": 62.4,
+      "average_balance": 8920,
+      "median_balance": 2340,
+      "organic_score": 7.8,
+      "liquidity_usd": 8900000,
+      "volume_24h_usd": 27800000,
+      "volume_liquidity_ratio": 3.12
+    },
+    {
+      "symbol": "AIOZ",
+      "name": "AIOZ Network",
+      "contract": "AIOZ15jR8KYJkZKvF5xVqfCLqzXh3xVqfCLqzXh3xV",
+      "holders": 28900,
+      "top_10_concentration": 38.2,
+      "top_50_concentration": 54.8,
+      "top_100_concentration": 65.1,
+      "average_balance": 12450,
+      "median_balance": 3120,
+      "organic_score": 7.2,
+      "liquidity_usd": 5600000,
+      "volume_24h_usd": 26900000,
+      "volume_liquidity_ratio": 4.8
+    },
+    {
+      "symbol": "GSYN",
+      "name": "Gensyn",
+      "contract": "gsynXBQoa5GFeePCuXo6uBXZJthU5g1gEJ987M4fx",
+      "holders": 12450,
+      "top_10_concentration": 52.3,
+      "top_50_concentration": 71.5,
+      "top_100_concentration": 78.9,
+      "average_balance": 45670,
+      "median_balance": 5230,
+      "organic_score": 5.8,
+      "liquidity_usd": 2100000,
+      "volume_24h_usd": 13650000,
+      "volume_liquidity_ratio": 6.5
+    },
+    {
+      "symbol": "RITUAL",
+      "name": "Ritual",
+      "contract": "ritualXBQoa5GFeePCuXo6uBXZJthU5g1gEJ987M4",
+      "holders": 18670,
+      "top_10_concentration": 61.5,
+      "top_50_concentration": 78.2,
+      "top_100_concentration": 85.3,
+      "average_balance": 89230,
+      "median_balance": 8450,
+      "organic_score": 4.5,
+      "liquidity_usd": 1800000,
+      "volume_24h_usd": 14760000,
+      "volume_liquidity_ratio": 8.2
+    }
+  ],
+  "summary": {
+    "best_organic_score": {"token": "WATT", "score": 8.2},
+    "lowest_whale_concentration": {"token": "WATT", "pct": 28.5},
+    "highest_retail_distribution": {"token": "WATT", "pct": 79.2},
+    "best_liquidity_health": {"token": "WATT", "ratio": 2.76},
+    "watt_ranking": "1st out of 6 tokens analyzed"
+  }
+}
