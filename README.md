@@ -2,6 +2,13 @@
 
 **Utility token on Solana for AI agent automation**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Solana](https://img.shields.io/badge/Solana-9945FF?logo=solana&logoColor=white)](https://solana.com)
+[![Token-2022](https://img.shields.io/badge/Token--2022-Enabled-purple)](https://solana.com/developers/guides/token-extensions)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://python.org)
+[![Bounties](https://img.shields.io/github/issues/WattCoin-Org/wattcoin/bounty?label=Open%20Bounties&color=green)](https://github.com/WattCoin-Org/wattcoin/issues?q=label:bounty+state:open)
+[![Contributors](https://img.shields.io/github/contributors/WattCoin-Org/wattcoin?color=orange)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Status](https://img.shields.io/badge/Status-Active-success)](https://github.com/WattCoin-Org/wattcoin)
 [![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
 [![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
 [![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
