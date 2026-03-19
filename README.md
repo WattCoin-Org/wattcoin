@@ -2,10 +2,17 @@
 
 **Utility token on Solana for AI agent automation**
 
-[![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
-[![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
-[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+[![Website](https://img.shields.io/badge/Website-wattcoin.org-brightgreen?style=flat)](https://wattcoin.org)
+[![Docs](https://img.shields.io/badge/Docs-API-blue?style=flat)](https://wattcoin.org/docs)
+[![Status](https://img.shields.io/badge/Status-Active-success?style=flat)](https://github.com/WattCoin-Org/wattcoin)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat)](https://github.com/WattCoin-Org/wattcoin/blob/main/LICENSE)
+[![Solana](https://img.shields.io/badge/Network-Solana-9945FF?style=flat&logo=solana)](https://solana.com)
+[![Token Standard](https://img.shields.io/badge/Token-Token--2022-14F195?style=flat)](https://spl.solana.com/token-2022)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat&logo=python)](https://python.org)
+[![Open Bounties](https://img.shields.io/badge/Bounties-5+-orange?style=flat)](https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aopen+label%3Abounty)
+[![Contributors](https://img.shields.io/github/contributors/WattCoin-Org/wattcoin?style=flat&color=purple)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2?style=flat&logo=x)](https://x.com/WattCoin2026)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord)](https://discord.gg/K3sWgQKk)
 
 ## 🚀 Token Info
 
@@ -175,4 +182,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 > **Merit System Active** — Contributors earn reputation through quality PRs. Check your tier: `/api/v1/reputation/<github-username>`
-
