@@ -1,0 +1,28 @@
+[Unit]
+Description=Pi Energy Monitor - WattCoin Power Consumption Reporter
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-energy-monitor
+Environment=PYTHONUNBUFFERED=1
+
+# Command to run (adjust path if needed)
+ExecStart=/usr/bin/python3 /home/pi/pi-energy-monitor/pi_energy_monitor.py --config /home/pi/pi-energy-monitor/config.yaml
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/pi-energy-monitor
+
+[Install]
+WantedBy=multi-user.target

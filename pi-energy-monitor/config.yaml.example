@@ -1,0 +1,106 @@
+# Pi Energy Monitor Configuration
+# Copy to config.yaml and customize
+
+# =============================================================================
+# REQUIRED: Your Solana wallet address (for signing reports)
+# =============================================================================
+wallet_address: "YourSolanaWalletAddress..."
+
+# =============================================================================
+# Hardware Configuration
+# Choose one: kasa, shelly, usb_power_meter, mock
+# =============================================================================
+hardware:
+  # Device type: kasa | shelly | usb_power_meter | mock
+  device_type: "mock"
+  
+  # For Kasa (TP-Link smart plug)
+  kasa:
+    host: "192.168.1.100"  # IP address of Kasa plug
+    port: 9999
+  
+  # For Shelly Plug
+  shelly:
+    host: "192.168.1.101"  # IP address of Shelly plug
+  
+  # For USB Power Meter (e.g., USB Wattman, FNIRSI)
+  # Uses serial communication
+  usb_power_meter:
+    device: "/dev/ttyUSB0"  # Serial device path
+    baudrate: 115200
+  
+  # Mock mode (for testing without hardware)
+  mock:
+    # Simulated wattage in watts
+    base_watts: 150.0
+    # Random variance (+/- watts)
+    variance: 10.0
+
+# =============================================================================
+# Polling Configuration
+# =============================================================================
+polling:
+  # Interval between readings in seconds
+  interval_seconds: 60
+  
+  # Number of samples to average per reading
+  samples_per_reading: 5
+  
+  # Delay between samples in seconds
+  sample_delay: 0.5
+
+# =============================================================================
+# API Configuration
+# =============================================================================
+api:
+  # Base URL for WattCoin API
+  base_url: "https://your-backend-url.example.com"
+  
+  # Energy report endpoint (relative to base_url)
+  endpoint: "/api/v1/energy/report"
+  
+  # Request timeout in seconds
+  timeout: 30
+  
+  # Maximum retry attempts on failure
+  max_retries: 3
+  
+  # Retry delay in seconds
+  retry_delay: 5
+
+# =============================================================================
+# Local Logging Configuration
+# =============================================================================
+logging:
+  # Database path for SQLite storage
+  database_path: "energy_data.db"
+  
+  # Enable JSON file logging (optional)
+  json_log: true
+  json_log_path: "energy_readings.json"
+  
+  # Log rotation (days to keep)
+  retention_days: 90
+
+# =============================================================================
+# Systemd Service (auto-start)
+# =============================================================================
+service:
+  # Service name
+  name: "pi-energy-monitor"
+  
+  # Run as user
+  user: "pi"
+  
+  # Working directory
+  working_directory: "/home/pi/pi-energy-monitor"
+
+# =============================================================================
+# Advanced
+# =============================================================================
+advanced:
+  # Enable debug logging
+  debug: false
+  
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
