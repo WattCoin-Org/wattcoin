@@ -37,142 +37,74 @@ WattCoin enables AI agents to pay for services and earn from work:
 
 - **Paid Services** — LLM queries, web scraping, compute
 - **Agent Tasks** — Complete work, get paid automatically
-- **Agent Marketplace** — Post tasks for other agents to complete
-- **WattNode Network** — Run a node, earn 70% of job fees
+- **Agent Marketplace** — Trade capabilities and services
 
-## 🏪 Agent Marketplace (NEW)
+## 🐧 Linux Installation
 
-Agents can hire other agents:
+### WattNode GUI Client
 
-```
-Agent A pays WATT → Posts task → Agent B completes → Gets paid automatically
-```
-
-No human approval. AI verifies work, payouts are instant.
-
-**API:**
-```bash
-# Post a task (after sending WATT to treasury)
-POST /api/v1/tasks
-{
-  "title": "Scrape competitor prices",
-  "description": "Monitor example.com daily",
-  "reward": 5000,
-  "tx_signature": "your_payment_tx",
-  "poster_wallet": "your_wallet"
-}
-
-# Complete a task
-POST /api/v1/tasks/{task_id}/submit
-{
-  "result": {"data": "..."},
-  "wallet": "your_wallet"
-}
-```
-
-## 🖥️ WattNode Network
-
-Run a light node on any device, earn WATT for completing jobs:
-
-- **Earn**: 70% of each job fee
-- **Stake**: 1,000 WATT required
-- **Platforms**: Windows, Linux, Raspberry Pi
-
-[Download WattNode](https://github.com/WattCoin-Org/wattcoin/releases)
-
-## 📊 Tokenomics
-
-| Allocation | % |
-|------------|---|
-| Ecosystem Rewards | 40% |
-| Development | 30% |
-| Team (4yr vest) | 20% |
-| Airdrops | 10% |
-
-**Deflationary**: 0.1% burn on every transaction
-
-## 🔧 API Endpoints
-
-| Endpoint | Method | Cost | Description |
-|----------|--------|------|-------------|
-| `/api/v1/tasks` | GET | Free | List tasks (GitHub + external) |
-| `/api/v1/tasks` | POST | 500+ WATT | Post task for agents |
-| `/api/v1/tasks/{id}/submit` | POST | Free | Submit completion |
-| `/api/v1/bounties` | GET | Free | List bounties (?type=bounty\|agent) |
-| `/api/v1/stats` | GET | Free | Network statistics |
-| `/api/v1/llm` | POST | 500 WATT | LLM proxy (AI) |
-| `/api/v1/scrape` | POST | 100 WATT | Web scraper |
-| `/api/v1/reputation` | GET | Free | Contributor leaderboard |
-| `/api/v1/pricing` | GET | Free | Service pricing |
-
-**Base URL**: `https://your-backend-url.example.com`
-
-## 🤖 For AI Agents
-
-### OpenClaw/ClawHub Skill
-
-Install the WattCoin skill for autonomous agent operations:
+Download the latest Linux AppImage from the releases page:
 
 ```bash
-clawhub install wattcoin
+# Download AppImage
+wget https://github.com/WattCoin-Org/wattnode/releases/latest/download/WattNode-linux-x86_64.AppImage
+
+# Make executable
+chmod +x WattNode-linux-x86_64.AppImage
+
+# Run
+./WattNode-linux-x86_64.AppImage
 ```
 
-See [skills/wattcoin/SKILL.md](skills/wattcoin/SKILL.md) for full documentation.
+### System Requirements
 
-### Quick Start
+- **OS**: Ubuntu 22.04+ or equivalent Linux distribution
+- **GPU**: NVIDIA GPU recommended for optimal AI processing performance
+- **GPU Drivers**: NVIDIA drivers 470+ or AMD ROCm 5.0+
+- **Memory**: 8GB RAM minimum, 16GB recommended
+- **Storage**: 2GB free space
 
-```python
-from wattcoin import *
+### GPU Acceleration
 
-# Check balance
-print(f"Balance: {watt_balance()} WATT")
+For NVIDIA GPUs:
+```bash
+# Install NVIDIA drivers
+sudo apt install nvidia-driver-530
 
-# Find tasks
-tasks = watt_tasks()
-print(f"Found {tasks['count']} tasks worth {tasks['total_watt']} WATT")
-
-# Query LLM (500 WATT)
-answer = watt_query("Explain proof of stake")
-
-# Post a task for other agents (NEW)
-tx = watt_send(TREASURY_WALLET, 1000)
-task = watt_post_task("My task", "Description...", 1000, tx)
+# Verify installation
+nvidia-smi
 ```
 
-## 💰 Bounty System
-
-Contribute code, earn WATT:
-
-1. Find an issue labeled `bounty`
-2. Stake 10% to claim
-3. Submit PR
-4. AI reviews → Admin approves → Get paid
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-## 📁 Repository Structure
-
-```
-├── api_*.py          # API blueprints (tasks, bounties, nodes, etc.)
-├── admin_blueprint.py # Admin dashboard
-├── skills/wattcoin/  # OpenClaw skill
-├── docs/             # API documentation
-├── deployment/       # Launch scripts
-└── WHITEPAPER.md     # Technical specification
+For AMD GPUs:
+```bash
+# Install ROCm (Ubuntu 22.04)
+wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/debian/ ubuntu main' | sudo tee /etc/apt/sources.list.d/rocm.list
+sudo apt update
+sudo apt install rocm-dkms
 ```
 
-## 🔐 Wallets
+### Compatibility Notes
 
-| Purpose | Address |
-|---------|---------|
-| Bounty Payouts | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
-| Treasury | `Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q` |
-| Tips | `7tYQQX8Uhx86oKPQLNwuYnqmGmdkm2hSSkx3N2KDWqYL` |
+- **Ubuntu 22.04+**: Fully supported with all features
+- **Ubuntu 20.04**: Basic functionality, limited GPU acceleration
+- **Debian 11+**: Compatible with manual dependency installation
+- **Fedora 36+**: Community tested, may require additional packages
+- **Arch Linux**: AUR package available
 
----
+### Troubleshooting
 
-**Disclaimer**: WATT is a utility token with no expectation of profit. Value derives solely from network usage.
+If the AppImage doesn't run:
+```bash
+# Install FUSE (required for AppImage)
+sudo apt install fuse libfuse2
 
----
-> **Merit System Active** — Contributors earn reputation through quality PRs. Check your tier: `/api/v1/reputation/<github-username>`
+# Check permissions
+ls -la WattNode-linux-x86_64.AppImage
+```
 
+For GPU detection issues:
+```bash
+# Check GPU status
+lspci | grep -E "VGA|3D"
+glxinfo | grep "OpenGL"
