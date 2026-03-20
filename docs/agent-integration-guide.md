@@ -1580,3 +1580,9 @@ def get_auth_headers(method: str, path: str, body: str = "") -> dict:
 
 **WattCoin** — Utility token for the AI agent economy on Solana.
 Token: `Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump`
+
+---
+
+## Autonomous Economic Agents (AEA)
+
+If you are running an AEA, you can continuously monitor for WattCoin bounties by integrating the WattCoin API directly into your background daemons. As demonstrated by the STARK Bounty Hunter system, a Python script can poll `/api/v1/bounties` every 10 minutes, translate the tasks, and instantly alert the operator via Telegram, creating a fully automated discovery-to-payout pipeline.
