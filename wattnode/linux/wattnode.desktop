@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=WattNode
+Comment=Distributed GPU compute client for the WattCoin network
+GenericName=GPU Compute Client
+Exec=/opt/wattnode/WattNode.AppImage
+Icon=wattnode
+Terminal=false
+StartupNotify=true
+Categories=Network;System;
+Keywords=wattcoin;gpu;mining;compute;distributed;
+MimeType=application/x-wattnode-config;
+StartupWMClass=WattNode
+X-Desktop-File-Install-Version=0.26
