@@ -1,0 +1,68 @@
+# WattCoin IoT Bridge — Example Configuration
+# Copy to config.yaml and customize for your setup
+
+# WattCoin API settings
+wattcoin_api: "https://api.wattcoin.example/v1"
+wallet: "YOUR_SOLANA_WALLET_ADDRESS"
+api_key: ""
+
+# Bridge settings
+poll_interval: 10  # seconds between state polls
+
+# Adapters to enable
+adapters:
+  - mock      # Enable mock for testing
+  # - mqtt     # Enable MQTT
+  # - zigbee   # Enable Zigbee2MQTT
+  # - kasa     # Enable Kasa Smart Plugs
+
+# MQTT Adapter Configuration
+mqtt:
+  broker: "localhost"
+  port: 1883
+  username: ""
+  password: ""
+  topics:
+    - "home/#"
+    - "zigbee2mqtt/#"
+    - "tele/#"
+  topic_prefix: ""
+  qos: 1
+
+# Zigbee2MQTT Adapter Configuration
+zigbee:
+  base_url: "http://localhost:8080"
+  api_key: ""
+  timeout: 10
+  poll_interval: 5
+
+# Kasa Smart Plug Configuration
+kasa:
+  type: "kasa"
+  devices:
+    - host: "192.168.1.100"
+      port: 9999
+      name: "Living Room TV"
+
+# Philips Hue Configuration
+hue:
+  type: "hue"
+  bridge_ip: "192.168.1.50"
+  api_key: ""  # Press Hue button, then: curl -X POST -d '{"devicetype":"wattcoin"}' http://BRIDGE_IP/api
+
+# Mock Device Configuration (for testing)
+mock:
+  devices:
+    - id: "light_1"
+      type: "light"
+      name: "Living Room Light"
+    - id: "plug_1"
+      type: "plug"
+      name: "TV Smart Plug"
+    - id: "sensor_1"
+      type: "sensor"
+      name: "Temperature Sensor"
+    - id: "motion_1"
+      type: "motion"
+      name: "Hall Motion Sensor"
+  fail_rate: 0.0  # Simulate 0% failure rate
