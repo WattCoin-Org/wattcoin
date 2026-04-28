@@ -556,6 +556,473 @@ class WattCoinSubmitTool(BaseTool):
             return f"API error: {e}"
 ```
 
+
+---
+
+### AutoGPT
+
+**Install:**
+
+```bash
+pip install autogpt requests
+# AutoGPT setup typically involves cloning its repository and installing dependencies
+```
+
+#### Integrating WattCoin with AutoGPT
+
+AutoGPT can be extended by providing it with custom commands (tools). You can define a new command that wraps the `WattCoinClient` methods.
+
+First, ensure you have the `WattCoinClient` class available (e.g., in a `wattcoin_tools.py` file):
+
+```python
+# wattcoin_tools.py
+import os
+import requests
+from typing import Optional
+
+BASE_URL = "https://wattcoin.org/api/v1"
+
+class WattCoinClient:
+    """Thin HTTP client for the WattCoin API."""
+
+    def __init__(self, wallet: str, api_key: str = ""):
+        self.wallet = wallet
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Content-Type": "application/json",
+            "X-API-Key": api_key,
+        })
+
+    def get_bounties(self, status: str = "open", bounty_type: Optional[str] = None) -> dict:
+        params = {"status": status}
+        if bounty_type:
+            params["type"] = bounty_type
+        r = self.session.get(f"{BASE_URL}/bounties", params=params, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    def get_tasks(self, status: str = "open", task_type: Optional[str] = None) -> dict:
+        params = {"status": status}
+        if task_type:
+            params["type"] = task_type
+        r = self.session.get(f"{BASE_URL}/tasks", params=params, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    def get_stats(self) -> dict:
+        r = self.session.get(f"{BASE_URL}/stats", timeout=10)
+        r.raise_for_status()
+        return r.json()
+
+    def get_balance(self, wallet: Optional[str] = None) -> dict:
+        address = wallet or self.wallet
+        r = self.session.get(f"{BASE_URL}/balance/{address}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+
+    def claim_task(self, task_id: str, agent_name: str = "autogpt-agent") -> dict:
+        r = self.session.post(
+            f"{BASE_URL}/tasks/{task_id}/claim",
+            json={"wallet": self.wallet, "agent_name": agent_name},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def submit_task(self, task_id: str, result: str) -> dict:
+        r = self.session.post(
+            f"{BASE_URL}/tasks/{task_id}/submit",
+            json={"wallet": self.wallet, "result": result},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+
+# Initialize the client (usually done in your AutoGPT custom command definition)
+# client = WattCoinClient(
+#     wallet=os.environ.get("WATTCOIN_WALLET", "YOUR_DEFAULT_WALLET_IF_NOT_SET"),
+#     api_key=os.environ.get("WATTCOIN_API_KEY", ""),
+# )
+```
+
+Then, you would create a custom command in AutoGPT. For instance, in a `plugins/wattcoin_plugin.py` file:
+
+```python
+# plugins/wattcoin_plugin.py
+import os
+from autogpt.core.resource.model_providers import ChatModelProvider
+from autogpt.core.plugin.base import AutoGPTPlugin
+from autogpt.core.plugin.registry import register_plugin
+from autogpt.framework.tool import Tool
+
+from wattcoin_tools import WattCoinClient # Assuming wattcoin_tools.py is accessible
+
+class WattCoinCommand(Tool):
+    """
+    A custom command to interact with the WattCoin API.
+    AutoGPT agents can use this to query bounties, tasks, and balances.
+    """
+    name: str = "wattcoin_api"
+    description: str = "Interact with the WattCoin API for bounties, tasks, and network stats."
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.client = WattCoinClient(
+            wallet=os.environ.get("WATTCOIN_WALLET", "YOUR_DEFAULT_WALLET_HERE"),
+            api_key=os.environ.get("WATTCOIN_API_KEY", ""),
+        )
+
+    def _execute(self, action: str, **kwargs) -> str:
+        """
+        Execute a WattCoin API action.
+        Actions: get_bounties, get_tasks, get_stats, get_balance, claim_task, submit_task
+        """
+        try:
+            if action == "get_bounties":
+                data = self.client.get_bounties(
+                    status=kwargs.get("status", "open"),
+                    bounty_type=kwargs.get("bounty_type")
+                )
+                return f"Bounties: {data.get('bounties', [])}"
+            elif action == "get_tasks":
+                data = self.client.get_tasks(
+                    status=kwargs.get("status", "open"),
+                    task_type=kwargs.get("task_type")
+                )
+                return f"Tasks: {data.get('tasks', [])}"
+            elif action == "get_stats":
+                data = self.client.get_stats()
+                return f"Network Stats: {data}"
+            elif action == "get_balance":
+                data = self.client.get_balance(kwargs.get("wallet"))
+                return f"Balance: {data.get('balance')} WATT"
+            elif action == "claim_task":
+                data = self.client.claim_task(kwargs["task_id"])
+                return f"Task Claimed: {data}"
+            elif action == "submit_task":
+                data = self.client.submit_task(kwargs["task_id"], kwargs["result"])
+                return f"Task Submitted: {data}"
+            else:
+                return f"Unknown action: {action}"
+        except Exception as e:
+            return f"Error executing WattCoin API action '{action}': {e}"
+
+@register_plugin
+class WattCoinPlugin(AutoGPTPlugin):
+    def __init__(self):
+        super().__init__()
+        self.name = "WattCoin Plugin"
+        self.version = "0.1.0"
+        self.description = "Provides AutoGPT with tools to interact with the WattCoin API."
+
+    def provide_tool_list(self, **kwargs) -> list[Tool]:
+        return [WattCoinCommand()]
+
+    def can_handle_post_prompt(self) -> bool:
+        return True
+
+    def post_prompt(self, prompt: str, **kwargs) -> str:
+        # You can modify the prompt if needed
+        return prompt
+
+    def can_handle_on_planning(self) -> bool:
+        return True
+
+    def on_planning(self, prompt: str, **kwargs) -> str:
+        # Logic to influence planning based on WattCoin tools
+        return prompt
+
+    def can_handle_on_response(self) -> bool:
+        return True
+
+    def on_response(self, response: str, **kwargs) -> str:
+        # Logic to process agent responses
+        return response
+
+```
+
+**Usage within AutoGPT:**
+
+Once the plugin is installed (usually by placing it in the `plugins` directory of your AutoGPT setup), AutoGPT agents will be able to discover and use the `wattcoin_api` command.
+
+Example AutoGPT prompt that would leverage this tool:
+
+```
+Agent Name: WattHunter
+Goals:
+1. Check the current WATT balance for the wallet address in my environment.
+2. List all open coding tasks on WattCoin.
+3. Identify the highest paying coding task.
+4. Claim the highest paying coding task.
+```
+
+AutoGPT's reasoning engine would then determine when to call the `wattcoin_api` command with appropriate `action` and `kwargs`.
+
+---
+
+### OpenAI Assistants API
+
+**Install:**
+
+```bash
+pip install openai requests
+```
+
+#### Custom Tools for OpenAI Assistants
+
+The OpenAI Assistants API allows you to define custom tools (functions) that your assistant can call. These tools can wrap the `WattCoinClient` methods.
+
+First, ensure you have the `WattCoinClient` class available (e.g., in a `wattcoin_client.py` file).
+
+```python
+# wattcoin_client.py (same as the one used for LangChain/AutoGPT)
+import os
+import requests
+from typing import Optional
+
+BASE_URL = "https://wattcoin.org/api/v1"
+
+class WattCoinClient:
+    """Thin HTTP client for the WattCoin API."""
+
+    def __init__(self, wallet: str, api_key: str = ""):
+        self.wallet = wallet
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Content-Type": "application/json",
+            "X-API-Key": api_key,
+        })
+
+    def get_bounties(self, status: str = "open", bounty_type: Optional[str] = None) -> dict:
+        params = {"status": status}
+        if bounty_type:
+            params["type"] = bounty_type
+        r = self.session.get(f"{BASE_URL}/bounties", params=params, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    def get_tasks(self, status: str = "open", task_type: Optional[str] = None) -> dict:
+        params = {"status": status}
+        if task_type:
+            params["type"] = task_type
+        r = self.session.get(f"{BASE_URL}/tasks", params=params, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    def get_stats(self) -> dict:
+        r = self.session.get(f"{BASE_URL}/stats", timeout=10)
+        r.raise_for_status()
+        return r.json()
+
+    def get_balance(self, wallet: Optional[str] = None) -> dict:
+        address = wallet or self.wallet
+        r = self.session.get(f"{BASE_URL}/balance/{address}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+
+    def claim_task(self, task_id: str, agent_name: str = "openai-assistant") -> dict:
+        r = self.session.post(
+            f"{BASE_URL}/tasks/{task_id}/claim",
+            json={"wallet": self.wallet, "agent_name": agent_name},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def submit_task(self, task_id: str, result: str) -> dict:
+        r = self.session.post(
+            f"{BASE_URL}/tasks/{task_id}/submit",
+            json={"wallet": self.wallet, "result": result},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+```
+
+Next, define the functions the Assistant can call and register them.
+
+```python
+import os
+from openai import OpenAI
+import json
+
+# Assuming wattcoin_client.py is available and WattCoinClient is defined
+from wattcoin_client import WattCoinClient
+
+# Initialize OpenAI client
+client_openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+# Initialize WattCoin client
+wattcoin_client = WattCoinClient(
+    wallet=os.environ.get("WATTCOIN_WALLET", "YOUR_DEFAULT_WALLET_HERE"),
+    api_key=os.environ.get("WATTCOIN_API_KEY", ""),
+)
+
+# 1. Define the WattCoin API tools as OpenAI function schemas
+wattcoin_tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_open_bounties",
+            "description": "List open WattCoin bounties. Filter by type: 'bounty' or 'agent'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "bounty_type": {
+                        "type": "string",
+                        "enum": ["bounty", "agent"],
+                        "description": "Filter bounties by type: 'bounty' (GitHub issues) or 'agent' (agent-specific tasks)."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_open_tasks",
+            "description": "List open agent tasks on WattCoin. Filter by type: 'code', 'data', 'content', 'scrape', 'analysis', 'compute', 'other'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_type": {
+                        "type": "string",
+                        "enum": ["code", "data", "content", "scrape", "analysis", "compute", "other"],
+                        "description": "Filter tasks by category."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_network_stats",
+            "description": "Get WattCoin network statistics: active nodes, total tasks, volume.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_watt_balance",
+            "description": "Check WATT token balance for a specific Solana wallet address. Uses the assistant's configured wallet if none provided.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "wallet_address": {
+                        "type": "string",
+                        "description": "Optional Solana wallet address to check. If not provided, uses the assistant's default wallet."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "claim_wattcoin_task",
+            "description": "Claim an open task by its ID. Requires a minimum balance of 2,500 WATT.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "The unique identifier of the task to claim."
+                    }
+                },
+                "required": ["task_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_wattcoin_task",
+            "description": "Submit completed work for a claimed task. The result is evaluated by AI (7/10+ to pass).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "The unique identifier of the task being submitted."
+                    },
+                    "result": {
+                        "type": "string",
+                        "description": "The completed work or a summary of the work. This will be evaluated by an AI."
+                    }
+                },
+                "required": ["task_id", "result"]
+            }
+        }
+    },
+]
+
+# 2. Map tool names to functions in your code
+def call_wattcoin_tool(tool_call):
+    function_name = tool_call.function.name
+    function_args = json.loads(tool_call.function.arguments)
+
+    if function_name == "list_open_bounties":
+        return wattcoin_client.get_bounties(**function_args)
+    elif function_name == "list_open_tasks":
+        return wattcoin_client.get_tasks(**function_args)
+    elif function_name == "check_network_stats":
+        return wattcoin_client.get_stats()
+    elif function_name == "check_watt_balance":
+        return wattcoin_client.get_balance(**function_args)
+    elif function_name == "claim_wattcoin_task":
+        return wattcoin_client.claim_task(**function_args)
+    elif function_name == "submit_wattcoin_task":
+        return wattcoin_client.submit_task(**function_args)
+    else:
+        raise ValueError(f"Unknown tool: {function_name}")
+
+# 3. Create an Assistant (or update an existing one)
+# assistant = client_openai.beta.assistants.create(
+#     name="WattCoin Bounty Hunter",
+#     instructions="You are an AI assistant that can interact with the WattCoin API to find and claim tasks.",
+#     model="gpt-4o",
+#     tools=wattcoin_tools,
+# )
+
+# Example of running an interaction
+# thread = client_openai.beta.threads.create()
+# message = client_openai.beta.threads.messages.create(
+#     thread_id=thread.id,
+#     role="user",
+#     content="What is the current WATT balance for wallet address 7vvNkG3Y1G7V13d8d6YF1F1H1S1D1A1Q1W1E1R1T1Y1U1I1O1P1A1S1D1F?",
+# )
+#
+# run = client_openai.beta.threads.runs.create(
+#     thread_id=thread.id,
+#     assistant_id=assistant.id,
+# )
+#
+# while run.status == "queued" or run.status == "in_progress":
+#     run = client_openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+#     if run.status == "requires_action":
+#         tool_outputs = []
+#         for tool_call in run.required_action.submit_tool_outputs.tool_calls:
+#             output = call_wattcoin_tool(tool_call)
+#             tool_outputs.append({
+#                 "tool_call_id": tool_call.id,
+#                 "output": json.dumps(output), # OpenAI expects stringified JSON
+#             })
+#         run = client_openai.beta.threads.runs.submit_tool_outputs(
+#             thread_id=thread.id,
+#             run_id=run.id,
+#             tool_outputs=tool_outputs,
+#         )
+#     time.sleep(1) # Wait for a second before checking again
+#
+# messages = client_openai.beta.threads.messages.list(thread_id=thread.id)
+# print(messages.data[0].content[0].text.value)
+
+```
+
+This setup allows your OpenAI Assistant to understand and utilize the WattCoin API functions, enabling it to respond to user queries or autonomously act on tasks related to bounties, network stats, and balances.
+
 #### CrewAI Bounty Hunter Crew
 
 ```python
