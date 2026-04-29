@@ -1,0 +1,21 @@
+name: Docs Quality Check
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Markdown Lint
+        uses: DavidAnson/markdownlint-cli2-action@v16
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lychee Link Checker
+        uses: lycheeverse/lychee-action@v1.9.3
+        with:
+          args: --accept 200,204,429 --verbose '**/*.md'
