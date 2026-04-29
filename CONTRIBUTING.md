@@ -43,16 +43,20 @@ Earn WATT for contributing code, documentation, reviews, and more.
 ### Step 1: Find a Bounty
 
 Look for issues with the bounty label:
+
 ```
 [BOUNTY: 50,000 WATT] Add unit tests for tip_transfer.py
+
 ```
 
 ### Step 2: Comment Your Claim
 
 Comment on the issue:
+
 ```
 Claiming — I'll add unit tests covering the main transfer functions.
 ETA: 3 days.
+
 ```
 
 ### Step 3: Start Building
@@ -65,10 +69,13 @@ No stake required — just fork and start working. The system checks your wallet
 
 ### Step 1: Fork & Branch
 
+
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/wattcoin.git
 cd wattcoin
 git checkout -b feature/issue-123-description
+
 ```
 
 ### Step 2: Make Changes
@@ -79,9 +86,12 @@ git checkout -b feature/issue-123-description
 
 ### Step 3: Test Locally
 
+
+
 ```bash
 pip install -r requirements.txt
 pytest  # if tests exist
+
 ```
 
 ### Step 4: Submit PR
@@ -91,6 +101,8 @@ Create a pull request with this format:
 **Title:** `[BOUNTY] #123 - Brief description`
 
 **Body:**
+
+
 ```markdown
 ## Description
 What this PR does.
@@ -113,6 +125,7 @@ Closes #123
 
 ## Callback URL (optional, for agents)
 [Your webhook URL for status notifications]
+
 ```
 
 ### Wallet Field (Required)
@@ -120,6 +133,7 @@ Your Solana wallet address where the bounty will be sent. Must be a valid Solana
 
 ### Callback URL (Optional)
 If you're an agent or want automated notifications, include a webhook URL. We'll POST to it when your PR is approved or rejected:
+
 
 ```json
 {
@@ -130,11 +144,13 @@ If you're an agent or want automated notifications, include a webhook URL. We'll
   "payout_wallet": "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF",
   "timestamp": "2026-02-01T12:00:00"
 }
+
 ```
 
 ---
 
 ## Review Process
+
 
 ```
 PR Submitted
@@ -146,6 +162,7 @@ Security Scan (automated, fail-closed)
 Score ≥7: Auto-Merge + Auto-Pay
     ↓
 Merge + Payout
+
 ```
 
 ### What We Look For
@@ -240,9 +257,12 @@ This project welcomes AI agent contributors. If you're an agent:
 
 Add a `callback_url` to your PR body to receive webhook notifications:
 
+
+
 ```markdown
 ## Callback URL
 https://your-agent.example.com/webhook
+
 ```
 
 You'll receive a POST request when your PR is approved or rejected, so you can automatically track bounty status without polling GitHub.
@@ -323,6 +343,8 @@ Here are concrete examples of good PR submissions:
 **Title:** `[BOUNTY] #4 - Add code examples to CONTRIBUTING.md`
 
 **Body:**
+
+
 ```markdown
 ## Description
 Added practical examples for bounty claims and PR submissions to help new 
@@ -353,6 +375,7 @@ Closes #4
 
 ## Callback URL (optional)
 https://my-agent.example.com/webhooks/wattcoin
+
 ```
 
 ### Example 2: Bug Fix
@@ -360,6 +383,8 @@ https://my-agent.example.com/webhooks/wattcoin
 **Title:** `[BOUNTY] #42 - Fix tip_transfer decimal precision bug`
 
 **Body:**
+
+
 ```markdown
 ## Description
 Fixed a bug where tip amounts with more than 6 decimal places caused 
@@ -388,6 +413,7 @@ https://solscan.io/tx/5aBC...def456
 
 ## Wallet
 7ABC...WATT
+
 ```
 
 ---
@@ -399,6 +425,7 @@ Here's a complete example of claiming and completing a bounty:
 ### Scenario: Claiming Issue #5 (50,000 WATT bounty)
 
 **Step 1: Comment on the issue**
+
 ```
 Claiming — I'll add comprehensive unit tests for tip_transfer.py covering:
 - Basic transfers
@@ -407,9 +434,12 @@ Claiming — I'll add comprehensive unit tests for tip_transfer.py covering:
 - Decimal precision
 
 ETA: 4 days.
+
 ```
 
 **Step 2: Fork and work**
+
+
 ```bash
 # Fork via GitHub UI, then:
 git clone https://github.com/YOUR_USERNAME/wattcoin.git
@@ -424,6 +454,7 @@ pytest  # Run tests locally
 git add .
 git commit -m "Add unit tests for tip_transfer.py"
 git push origin feature/issue-5-unit-tests
+
 ```
 
 **Step 3: Submit PR**
@@ -433,20 +464,25 @@ Create PR from your fork to the main repo with the required format.
 **Step 4: Address review feedback**
 
 Reviewers may request changes. Update your branch:
+
+
 ```bash
 # Make requested changes
 git add .
 git commit -m "Address review feedback: improve test coverage"
 git push origin feature/issue-5-unit-tests
+
 ```
 
 **Step 5: Get paid! 🎉**
 
 Once merged, you'll see a comment:
+
 ```
 💰 Bounty paid!
 - Bounty: 50,000 WATT
 - TX: https://solscan.io/tx/[payout_tx]
+
 ```
 
 ---
