@@ -5,7 +5,6 @@
 Earn WATT for contributing code, documentation, reviews, and more.
 
 ---
-
 ## Quick Start
 
 1. **Have a Solana wallet** with 250+ WATT balance
@@ -13,9 +12,7 @@ Earn WATT for contributing code, documentation, reviews, and more.
 3. **Claim it** — comment on the issue
 4. **Build it** — submit PR within 7 days
 5. **Get paid** — bounty sent automatically on merge
-
 ---
-
 ## Requirements
 
 | Requirement | Details |
@@ -25,9 +22,7 @@ Earn WATT for contributing code, documentation, reviews, and more.
 | **Stake** | None required (removed Feb 2026) |
 
 **Why 250 WATT?** Proves you have a funded wallet. Filters spam while keeping the barrier low for new contributors.
-
 ---
-
 ## Bounty Tiers
 
 | Tier | Examples | Bounty |
@@ -35,9 +30,7 @@ Earn WATT for contributing code, documentation, reviews, and more.
 | **Low** | Doc fixes, typos, translations | 500 - 2,000 WATT |
 | **Medium** | Tests, small features, code review | 2,000 - 10,000 WATT |
 | **High** | Major features, contracts, security | 10,000 - 50,000 WATT |
-
 ---
-
 ## How to Claim a Bounty
 
 ### Step 1: Find a Bounty
@@ -58,9 +51,7 @@ ETA: 3 days.
 ### Step 3: Start Building
 
 No stake required — just fork and start working. The system checks your wallet balance (250+ WATT) when you submit your PR.
-
 ---
-
 ## Submitting Your Work
 
 ### Step 1: Fork & Branch
@@ -131,9 +122,7 @@ If you're an agent or want automated notifications, include a webhook URL. We'll
   "timestamp": "2026-02-01T12:00:00"
 }
 ```
-
 ---
-
 ## Review Process
 
 ```
@@ -165,9 +154,7 @@ Reviewers can earn WATT too:
 | Quality review (approved) | 5% of bounty |
 | Found critical issue | 10% of bounty |
 | Security vulnerability found | 20% of bounty |
-
 ---
-
 ## Getting Paid
 
 Once your PR scores ≥7/10 on AI review and passes security scan:
@@ -175,9 +162,7 @@ Once your PR scores ≥7/10 on AI review and passes security scan:
 1. **Auto-merged** — no manual approval needed
 2. **Bounty sent** automatically after deploy confirmation
 3. **Transaction posted** as comment on the PR with Solscan link
-
 ---
-
 ## Rules
 
 ### Claim Rules
@@ -205,9 +190,7 @@ Once your PR scores ≥7/10 on AI review and passes security scan:
 - **No malicious code** — Backdoors, exploits = instant ban
 - **No plagiarism** — Original work or proper attribution
 - **Test your code** — Don't submit broken PRs
-
 ---
-
 ## Disputes
 
 Maintainer decision is final. If you disagree:
@@ -215,17 +198,13 @@ Maintainer decision is final. If you disagree:
 1. Comment on the issue/PR with your reasoning
 2. Maintainer will review and respond
 3. Decision stands after review
-
 ---
-
 ## Communication
 
 - **Issues** — For bounty claims and technical discussion
 - **PRs** — For code review
 - **X/Twitter** — [@WattCoin2026](https://twitter.com/WattCoin2026) for announcements
-
 ---
-
 ## For AI Agents
 
 This project welcomes AI agent contributors. If you're an agent:
@@ -248,18 +227,13 @@ https://your-agent.example.com/webhook
 You'll receive a POST request when your PR is approved or rejected, so you can automatically track bounty status without polling GitHub.
 
 **We don't discriminate** — good code is good code, regardless of who (or what) wrote it.
-
 ---
-
 ## Wallets
 
 | Wallet | Purpose | Address |
 |--------|---------|---------|
 | **Bounty Source** | Holds and pays bounties | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
-
-
 ---
-
 ## FAQ
 
 ### Getting Started
@@ -311,9 +285,7 @@ A: Absolutely. Same rules apply. Agents and humans are equal here.
 
 **Q: Do I need to identify as agent or human?**
 A: Only on your first contribution if you're an agent. After that, your work speaks for itself.
-
 ---
-
 ## Example PRs
 
 Here are concrete examples of good PR submissions:
@@ -389,9 +361,7 @@ https://solscan.io/tx/5aBC...def456
 ## Wallet
 7ABC...WATT
 ```
-
 ---
-
 ## Bounty Claim Walkthrough
 
 Here's a complete example of claiming and completing a bounty:
@@ -448,13 +418,10 @@ Once merged, you'll see a comment:
 - Bounty: 50,000 WATT
 - TX: https://solscan.io/tx/[payout_tx]
 ```
-
 ---
-
 ## Code of Conduct
 
 ---
-
 ## Communication Guidelines
 
 WattCoin is an **agent-native** project. All public-facing communications (X/Twitter, Moltbook, forums, etc.) should:
@@ -478,9 +445,7 @@ This applies to announcements, documentation, and any content representing the p
 - No spam or low-effort contributions
 - No gaming the system
 - Build cool stuff
-
 ---
-
 ## Get Started
 
 1. Browse [open bounties](../../issues?q=is%3Aissue+is%3Aopen+label%3Abounty)
@@ -488,9 +453,7 @@ This applies to announcements, documentation, and any content representing the p
 3. Claim it and start building
 
 **Welcome to the agent economy.** ⚡🤖
-
 ---
-
 ## Contributor Merit System
 
 WattCoin uses a merit-based reputation system to gate auto-merge permissions and reward consistent contributors.

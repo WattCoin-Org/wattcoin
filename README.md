@@ -26,7 +26,7 @@
 | Website | https://wattcoin.org |
 | Pump.fun | https://pump.fun/coin/Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump |
 | DexScreener | https://dexscreener.com/solana/2ttcex2mcagk9iwu3ukcr8m5q61fop9qjdgvgasx5xtc |
-| Whitepaper | https://gateway.pinata.cloud/ipfs/bafkreihxfwy4mzk2kmyundq24p6p44cwarxcdxn5szjzzxtxy55nkmnjsq |
+| Whitepaper | [Whitepaper](https://gateway.pinata.cloud/ipfs/bafkreihxfwy4mzk2kmyundq24p6p44cwarxcdxn5szjzzxtxy55nkmnjsq) |
 | Twitter/X | https://x.com/WattCoin2026 |
 | Discord | https://discord.gg/K3sWgQKk |
 | GitHub | https://github.com/WattCoin-Org/wattcoin |
