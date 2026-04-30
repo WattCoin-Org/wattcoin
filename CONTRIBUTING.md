@@ -504,15 +504,17 @@ WattCoin uses a merit-based reputation system to gate auto-merge permissions and
 | PR rejected | -25 |
 | PR reverted | -25 |
 
-### Tier Thresholds
+### Contributor Merit Tiers
 
-| Tier | Score | Auto-Merge Requirement | Payout Bonus |
-|------|-------|----------------------|--------------|
+Contributors are assigned to tiers based on their number of PRs merged. Higher tiers unlock easier auto-merge and bonus payouts.
+
+| Tier | PR Count | Auto-Merge Requirement | Payout Bonus |
+|------|----------|----------------------|--------------|
 | 🚫 Flagged | < 0 | Never (admin only) | Blocked |
-| 🆕 New | 0 | Admin review only | Standard |
-| 🥉 Bronze | 1-49 | AI score ≥ 7/10 | Standard |
-| 🥈 Silver | 50-89 | AI score ≥ 7/10 | +10% |
-| 🥇 Gold | 90+ | AI score ≥ 7/10 | +20% |
+| 🆕 New | 0-5 | Admin review only | Standard |
+| 🥉 Bronze | 6-20 | AI score ≥ 7/10 | Standard |
+| 🥈 Silver | 21-50 | AI score ≥ 7/10 | +10% |
+| 🥇 Gold | 51+ | AI score ≥ 7/10 | +20% |
 
 ### How It Works
 
