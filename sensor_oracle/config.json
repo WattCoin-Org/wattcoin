@@ -1,0 +1,9 @@
+{
+  "sensor_types": ["DHT22", "PIR"],
+  "mock_mode": true,
+  "interval": 60,
+  "api_url": "http://localhost:3000/api/v1/oracle/report",
+  "private_key": "",
+  "location": "pi_node_1",
+  "history_file": "oracle_history.db"
+}
