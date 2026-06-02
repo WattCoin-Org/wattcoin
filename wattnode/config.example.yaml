@@ -1,67 +1,39 @@
 # WattNode Configuration
-# Copy to config.yaml and fill in your details
 
-# =============================================================================
-# REQUIRED: Your Solana wallet address
-# =============================================================================
-wallet: "YourSolanaWalletAddress..."
+# Your Solana wallet address (required)
+wallet: "YourSolanaWalletAddressHere"
 
-# =============================================================================
-# Node Identity
-# =============================================================================
-# Name shown in the network (optional)
-name: "my-wattnode"
+# Private key for signing sensor oracle data (hex-encoded Ed25519)
+# Alternatively, set environment variable WATT_PRIVATE_KEY
+wallet_private_key: ""
 
-# =============================================================================
-# Capabilities
-# What jobs this node can handle
-# =============================================================================
+# Node identity
+name: "my-node"
+
+# Capabilities (comma-separated list)
 capabilities:
-  - scrape        # Web scraping (default, no extra setup)
-  # - inference   # LLM inference (requires NVIDIA GPU + inference engine)
+  - scrape
+  # - inference   # uncomment if Ollama is installed
 
-# =============================================================================
-# WSI Inference Settings (requires NVIDIA GPU with ≥6GB VRAM)
-# Enable via the Inference tab in the GUI, or uncomment 'inference' above
-# =============================================================================
-inference_engine:
-  # Model to serve — must match the model other swarm nodes are hosting
-  model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+# Web scraping settings
+scrape:
+  user_agent: "WattNode/1.0"
+  timeout_sec: 30
 
-  # Number of transformer blocks to host (null = auto-detect from GPU VRAM)
-  # More blocks = more contribution = more WATT earned per query
-  # Llama 8B has 32 blocks total; 8GB GPU can serve ~20-25 blocks
-  num_blocks: null
+# Inference settings (Ollama)
+inference:
+  base_url: "http://localhost:11434"
+  model: "llama2"
 
-  # P2P port for swarm communication
-  port: 31330
-
-# =============================================================================
-# Legacy: Ollama Settings (fallback if distributed inference unavailable)
-# =============================================================================
-ollama:
-  url: "http://localhost:11434"
-  model: "llama2"  # or llama3, mistral, phi, etc.
-
-# =============================================================================
-# Timing
-# =============================================================================
-# How often to send heartbeat (seconds)
-heartbeat_interval: 60
-
-# How often to poll for new jobs (seconds)
-poll_interval: 5
-
-# =============================================================================
-# SECURITY NOTE
-# =============================================================================
-# Private keys should NEVER be stored in config files!
-# Use environment variable instead:
-#   export WATT_PRIVATE_KEY="your_base58_private_key"
-# Or the daemon will prompt you if needed for signing
-
-# =============================================================================
-# API Connection
-# =============================================================================
-# WattCoin backend URL — set via environment variable:
-#   export WATTCOIN_API_URL="https://your-backend-url.example.com"
+# Sensor Oracle settings (Raspberry Pi)
+oracle:
+  enabled: true                     # Set to false to skip sensor reporting
+  mock: false                       # Use mock sensor data (for testing)
+  interval: 60                      # Reporting interval in seconds
+  api_endpoint: "https://your-backend-url.example.com/api/v1/oracle/report"
+  sensors:
+    - dht22
+    # - pir                          # Uncomment to enable PIR motion sensor
+  dht_pin: "D4"                     # GPIO pin for DHT22 (using board.D4)
+  pir_pin: 17                       # BCM pin for PIR sensor
+  db_path: "data/oracle_history.db" # Local SQLite database path
