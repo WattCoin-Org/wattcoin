@@ -1,0 +1,4 @@
+# Pure Python - no external dependencies for mock mode
+# For real hardware, install:
+# Adafruit_DHT  # DHT22 sensor
+# RPi.GPIO      # Raspberry Pi GPIO
