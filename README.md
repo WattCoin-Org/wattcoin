@@ -2,10 +2,18 @@
 
 **Utility token on Solana for AI agent automation**
 
-[![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
-[![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
-[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+[![Website](https://img.shields.io/badge/Website-wattcoin.org-00cc66?style=flat-square&logo=google-chrome&logoColor=white)](https://wattcoin.org)
+[![Docs](https://img.shields.io/badge/Docs-API-0066ff?style=flat-square&logo=readthedocs&logoColor=white)](https://wattcoin.org/docs)
+[![License](https://img.shields.io/badge/License-MIT-4CAF50?style=flat-square&logo=open-source-initiative&logoColor=white)](LICENSE)
+[![Build](https://img.shields.io/badge/Build-Active-brightgreen?style=flat-square&logo=github-actions&logoColor=white)](https://github.com/WattCoin-Org/wattcoin/actions)
+[![Solana](https://img.shields.io/badge/Solana-Platform-9945FF?style=flat-square&logo=solana&logoColor=white)](https://solana.com)
+[![Token](https://img.shields.io/badge/Token-2022-00d4aa?style=flat-square&logo=web3.js&logoColor=white)](https://spl.solana.com/token-2022)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Bounties](https://img.shields.io/badge/Bounties-Open-FF6B35?style=flat-square&logo=gitbook&logoColor=white)](https://github.com/WattCoin-Org/wattcoin/issues?q=is%3Aissue+is%3Aopen+label%3Abounty)
+[![Contributors](https://img.shields.io/github/contributors/WattCoin-Org/wattcoin?style=flat-square&logo=github&logoColor=white&color=blue)](https://github.com/WattCoin-Org/wattcoin/graphs/contributors)
+[![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2?style=flat-square&logo=x&logoColor=white)](https://x.com/WattCoin2026)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/K3sWgQKk)
+
 
 ## 🚀 Token Info
 
