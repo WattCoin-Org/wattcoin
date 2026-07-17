@@ -5,7 +5,7 @@
 [![Website](https://img.shields.io/badge/Website-wattcoin.org-green)](https://wattcoin.org)
 [![Docs](https://img.shields.io/badge/Docs-API-blue)](https://wattcoin.org/docs)
 [![Twitter](https://img.shields.io/badge/Twitter-@WattCoin2026-1DA1F2)](https://x.com/WattCoin2026)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/K3sWgQKk)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2)](https://discord.gg/vKaHJwaS4)
 
 ## 🚀 Token Info
 
@@ -28,7 +28,7 @@
 | DexScreener | https://dexscreener.com/solana/2ttcex2mcagk9iwu3ukcr8m5q61fop9qjdgvgasx5xtc |
 | Whitepaper | [Whitepaper](https://gateway.pinata.cloud/ipfs/bafkreihxfwy4mzk2kmyundq24p6p44cwarxcdxn5szjzzxtxy55nkmnjsq) |
 | Twitter/X | https://x.com/WattCoin2026 |
-| Discord | https://discord.gg/K3sWgQKk |
+| Discord | https://discord.gg/vKaHJwaS4 |
 | GitHub | https://github.com/WattCoin-Org/wattcoin |
 
 ## ⚡ What is WattCoin?
@@ -105,7 +105,7 @@ Run a light node on any device, earn WATT for completing jobs:
 | `/api/v1/reputation` | GET | Free | Contributor leaderboard |
 | `/api/v1/pricing` | GET | Free | Service pricing |
 
-**Base URL**: `https://your-backend-url.example.com`
+**Base URL**: `https://wattcoin.org`
 
 ## 🤖 For AI Agents
 
