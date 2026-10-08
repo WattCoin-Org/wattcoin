@@ -86,8 +86,7 @@ python wattnode.py run
 
 **Payment split:**
 - 70% → Node operator (you)
-- 20% → Treasury (network sustainability)
-- 10% → Burned (deflationary)
+- 30% → Treasury (network sustainability)
 
 ## Capabilities
 

@@ -89,7 +89,7 @@ Run a light node on any device, earn WATT for completing jobs:
 | Team (4yr vest) | 20% |
 | Airdrops | 10% |
 
-**Deflationary**: 0.1% burn on every transaction
+**Fixed supply**: Mint authority is revoked — no new WATT can ever be created. There is no automatic transaction burn.
 
 ## 🔧 API Endpoints
 
