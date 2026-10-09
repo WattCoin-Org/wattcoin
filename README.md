@@ -82,12 +82,7 @@ Run a light node on any device, earn WATT for completing jobs:
 
 ## 📊 Tokenomics
 
-| Allocation | % |
-|------------|---|
-| Ecosystem Rewards | 40% |
-| Development | 30% |
-| Team (4yr vest) | 20% |
-| Airdrops | 10% |
+**Distribution**: Fair launch via pump.fun — no pre-sale, no team or investor allocations; single-developer project. 150M WATT of developer supply is locked in a 2-year linear vest via Sablier. WattCoin treasury and bounty wallets hold ecosystem funds for bounties and task rewards (public, verifiable on-chain).
 
 **Fixed supply**: Mint authority is revoked — no new WATT can ever be created. There is no automatic transaction burn.
 

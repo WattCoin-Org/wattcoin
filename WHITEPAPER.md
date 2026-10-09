@@ -47,11 +47,7 @@ No governance tokens, yields, or profit-sharing—pure utility from executed wor
 ## Tokenomics (Utility-Driven)
 - **Total Supply**: 1B WATT (fixed cap).
 - **Fixed Supply**: Mint authority is revoked on-chain — no new WATT can ever be created. There is no automatic per-transaction burn; WATT has occasionally been burned manually, which permanently reduces supply.
-- **Allocation**:
-  - 40% Ecosystem Rewards (consumed for task/energy rebates).
-  - 30% Development & Integrations.
-  - 20% Team (4-year linear vesting).
-  - 10% Community Airdrops (targeted at robot/device owners and AI agent developers for usage bootstrapping).
+- **Distribution**: WATT launched via pump.fun with a fair-launch bonding curve. There was no pre-sale and there are no team or investor allocations. The project is run by a single developer. 150M WATT of developer supply is locked in a 2-year linear vest via Sablier. WattCoin-operated wallets (treasury and bounty) hold ecosystem funds used for bounties and task rewards. Their addresses are public and their balances can be checked on-chain.
 - **Utility Only**: No staking yields, dividends, or governance profit-sharing. WATT is spent on real automation activity.
 
 ## Roadmap
