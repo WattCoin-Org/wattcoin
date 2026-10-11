@@ -57,7 +57,7 @@ No governance tokens, yields, or profit-sharing—pure utility from executed wor
 - **Q3 2026+**: TAO/FET bridges; expanded agent economy tooling.
 
 ## Security
-Dilithium post-quantum signatures; hardware wallet support.
+Standard Solana token: works with any Solana wallet, including hardware wallets.
 
 ## Risks & Legal Note
 High volatility expected. WATT is a **utility token** with no promise of financial return. Users should only acquire WATT for participation in automation services. Independent project; consult legal professionals for compliance in your jurisdiction.
