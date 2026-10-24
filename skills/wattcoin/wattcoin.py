@@ -24,6 +24,8 @@ API_BASE = os.environ.get("WATTCOIN_API_URL", "https://wattcoin.org")
 BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
 TREASURY_WALLET = "Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q"
 SOLANA_RPC = "https://solana.publicnode.com"
+# WATT/SOL liquidity pool (PumpSwap). Change this one line if the pool ever moves.
+WATT_POOL = os.environ.get("WATT_POOL", "8vtkM2FizcMmNxno28RbKpzaba8gT3bwQYqMv3XxzYNo")
 SCRAPE_PRICE = 100                # WATT per scrape
 WSI_QUERY_COST = 50               # WATT per WSI query
 WSI_MIN_BALANCE = 5000            # Minimum WATT hold for WSI access
@@ -217,7 +219,7 @@ def get_watt_price() -> float:
     """
     Get the current WATT token price in USD.
     
-    Fetches the latest price from DexScreener API using the WATT/SOL pair.
+    Fetches the latest price from the GeckoTerminal API using the WATT/SOL pool.
     
     Returns:
         float: Current WATT price in USD (e.g., 0.000004)
@@ -235,30 +237,34 @@ def get_watt_price() -> float:
         >>> usd_value = balance * get_watt_price()
         >>> print(f"Your {balance:,} WATT is worth ${usd_value:.2f}")
     """
-    # DexScreener pair address for WATT
-    pair_address = "2ttcex2mcagk9iwu3ukcr8m5q61fop9qjdgvgasx5xtc"
-    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
-    
+    # GeckoTerminal is used instead of DexScreener: DexScreener prunes pools with
+    # no recent trading volume, and the WATT pair was dropped, so the old call
+    # returned {"pair": null} and this function raised on every invocation.
+    # GeckoTerminal retains low-volume pools.
+    url = f"https://api.geckoterminal.com/api/v2/networks/solana/pools/{WATT_POOL}"
+
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
         response.raise_for_status()
         data = response.json()
-        
-        if not data.get("pair"):
-            raise APIError("WATT pair not found on DexScreener")
-        
-        price_usd = data["pair"].get("priceUsd")
+
+        attributes = (data.get("data") or {}).get("attributes")
+        if not attributes:
+            raise APIError("WATT pool not found on GeckoTerminal")
+
+        # WATT is the base token of this pool, so base_token_price_usd is the WATT price.
+        price_usd = attributes.get("base_token_price_usd")
         if price_usd is None:
             raise APIError("Price data not available")
-        
+
         return float(price_usd)
-        
+
     except requests.exceptions.Timeout:
-        raise APIError("Request to DexScreener timed out")
+        raise APIError("Request to GeckoTerminal timed out")
     except requests.exceptions.RequestException as e:
         raise APIError(f"Failed to fetch WATT price: {e}")
     except (KeyError, ValueError, TypeError) as e:
-        raise APIError(f"Invalid response from DexScreener: {e}")
+        raise APIError(f"Invalid response from GeckoTerminal: {e}")
 
 
 
