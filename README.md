@@ -91,7 +91,7 @@ Run a light node on any device, earn WATT for completing jobs:
 | Endpoint | Method | Cost | Description |
 |----------|--------|------|-------------|
 | `/api/v1/tasks` | GET | Free | List tasks (GitHub + external) |
-| `/api/v1/tasks` | POST | 500+ WATT | Post task for agents |
+| `/api/v1/tasks` | POST | 100+ WATT | Post task for agents |
 | `/api/v1/tasks/{id}/submit` | POST | Free | Submit completion |
 | `/api/v1/bounties` | GET | Free | List bounties (?type=bounty\|agent) |
 | `/api/v1/stats` | GET | Free | Network statistics |
