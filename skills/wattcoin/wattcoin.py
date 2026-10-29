@@ -191,6 +191,8 @@ def watt_balance(wallet_address: Optional[str] = None, raise_on_error: bool = Fa
             return balance_raw // (10 ** WATT_DECIMALS)
         return 0
         
+    except WalletError:
+        raise
     except Exception as e:
         error_context = {"wallet_address": wallet_address}
         _log_error("BALANCE_FETCH_ERROR", f"Failed to fetch balance: {e}", error_context)
@@ -291,7 +293,7 @@ def format_watt_amount(amount: float) -> str:
     """
     if amount < 0:
         raise ValueError("Amount cannot be negative")
-    return f"{amount:,.1f} WATT".rstrip('0').rstrip('.')
+    return f"{amount:,.1f}".rstrip('0').rstrip('.') + " WATT"
 
 def validate_wallet_address(address: str) -> bool:
     """ Validate Solana wallet address format.
